@@ -38,4 +38,23 @@ final class IslandCoreTests: XCTestCase {
         let left = try String(contentsOfFile: path, encoding: .utf8)
         XCTAssertTrue(left.contains("other"))
     }
+
+    func testStatsAndNames() {
+        let obj: [String: Any] = ["type": "assistant", "message": ["model": "claude-sonnet-5-5", "content": [],
+            "usage": ["input_tokens": 2, "cache_read_input_tokens": 39507, "cache_creation_input_tokens": 19512]]]
+        let st = SessionStats.parse(obj)
+        XCTAssertEqual(st?.contextTokens, 59021)
+        XCTAssertEqual(st?.contextWindow, 200_000)
+        XCTAssertEqual(friendlyModelName("claude-sonnet-5-5"), "Sonnet 5.5")
+        XCTAssertEqual(friendlyModelName("claude-haiku-5-5"), "Haiku 5.5")
+    }
+
+    func testRateLimitParse() {
+        let obj: [String: Any] = ["type": "rate_limit_event", "rate_limit_info": ["unifiedWindows": [
+            "five_hour": ["utilization": 0.77, "resetsAt": 1792263600.0],
+            "seven_day": ["utilization": 0.08, "resetsAt": 1792818000.0]]]]
+        let r = RateLimits.parse(obj)
+        XCTAssertEqual(r?.fiveHour?.utilization, 0.77)
+        XCTAssertNotNil(r?.sevenDay)
+    }
 }

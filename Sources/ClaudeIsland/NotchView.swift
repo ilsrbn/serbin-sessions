@@ -83,7 +83,7 @@ struct NotchView: View {
         .animation(.spring(duration: 0.38, bounce: 0.08), value: signal)
     }
 
-    /// Something to show on the edge: needs you (amber, stays) or just finished (white, one sweep).
+    /// Something to show on the edge: needs you (amber, stays) or just finished (green, one sweep).
     private var signal: Bool { urgent > 0 || !ui.doneFlash.isEmpty }
 
     /// Ears out: something needs you or the cursor is resting on the notch. A finish is edge light only.
@@ -160,7 +160,7 @@ struct EdgeLine: Shape {
 }
 
 /// The one signal language: light running along the pill's edge. Amber = needs you (sweeps in from
-/// the bottom center, then breathes until answered). White = finished (a single sweep that fades).
+/// the bottom center, then breathes until answered). Green = finished (a single sweep that fades).
 struct EdgeLight: View {
     @ObservedObject var ui: NotchUIState
     let urgent: Bool
@@ -168,7 +168,7 @@ struct EdgeLight: View {
     var body: some View {
         TimelineView(.animation) { ctx in
             let (p, o) = phase(ctx.date)
-            let color = urgent ? Theme.amber : Color.white.opacity(0.92)
+            let color = urgent ? Theme.amber : Theme.green
             ZStack {
                 EdgeLine().trim(from: 0.5 - p / 2, to: 0.5 + p / 2)
                     .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round)).blur(radius: 3).opacity(0.75 * o)
@@ -270,7 +270,11 @@ struct ExpandedView: View {
         HStack {
             Button { ui.showingNew.toggle() } label: { Label("New session", systemImage: "plus") }
             Spacer()
+            if let r = store.rateLimits { LimitsView(limits: r) }
             if let e = store.lastError { Text(e).font(.caption).foregroundStyle(.red).lineLimit(1) }
+            Button { LaunchAtLogin.toggle { store.lastError = $0 }; ui.objectWillChange.send() } label: {
+                Image(systemName: LaunchAtLogin.isEnabled ? "sunrise.fill" : "sunrise")
+            }.help(LaunchAtLogin.isEnabled ? "Launches at login (click to turn off)" : "Launch at login")
             Button { ui.soundEnabled.toggle() } label: { Image(systemName: ui.soundEnabled ? "speaker.wave.2.fill" : "speaker.slash") }
                 .help(ui.soundEnabled ? "Sound on for requests that need you" : "Sound off")
             Text("⌃⌥Space").font(.caption2).foregroundStyle(.tertiary).help("Global hotkey: open and type")
@@ -298,6 +302,29 @@ extension ApprovalCard {
             }
             .menuStyle(.borderlessButton).fixedSize()
         }
+    }
+}
+
+struct LimitsView: View {
+    let limits: RateLimits
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let w = limits.fiveHour { chip("5h", w) }
+            if let w = limits.sevenDay { chip("7d", w) }
+        }
+        .font(.caption2).monospacedDigit()
+        .opacity(Date().timeIntervalSince(limits.updatedAt) > 1800 ? 0.5 : 1)
+        .help("Plan usage as of \(limits.updatedAt.formatted(date: .omitted, time: .shortened)). Refreshes when a session started from the panel talks to Claude.")
+    }
+
+    private func chip(_ name: String, _ w: RateLimits.Window) -> some View {
+        // A window that already reset is back to zero; the stored number is stale.
+        let expired = w.resetsAt < Date()
+        let pct = expired ? 0 : Int((w.utilization * 100).rounded())
+        let reset = w.resetsAt.formatted(date: .omitted, time: .shortened)
+        return Text("\(name) \(pct)%" + (expired ? "" : " ↻\(reset)"))
+            .foregroundStyle(pct >= 80 ? Theme.amber : Color.secondary)
     }
 }
 

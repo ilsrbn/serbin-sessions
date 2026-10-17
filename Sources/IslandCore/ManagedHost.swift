@@ -1,7 +1,8 @@
 import Foundation
 
 public enum ManagedEvent: Sendable {
-    case initialized(hostId: String, sessionId: String)
+    case initialized(hostId: String, sessionId: String, model: String?)
+    case rateLimits(RateLimits)
     case result(hostId: String, text: String, isError: Bool)
     case exited(hostId: String, status: Int32, stderr: String)
 }
@@ -52,7 +53,7 @@ public final class ManagedHost: @unchecked Sendable {
 
     @discardableResult
     public func start(cwd: String, prompt: String, mode: PermissionMode = .default,
-                      resume: String? = nil) throws -> String {
+                      resume: String? = nil, model: ModelChoice? = nil, effort: Effort? = nil) throws -> String {
         guard let claude = Self.findClaude() else {
             throw NSError(domain: "ClaudeIsland", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "claude CLI not found"])
@@ -62,6 +63,8 @@ public final class ManagedHost: @unchecked Sendable {
         var args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json",
                     "--verbose", "--permission-mode", mode.rawValue]
         if let resume { args += ["--resume", resume] }
+        if let model { args += ["--model", model.rawValue] }
+        if let effort { args += ["--effort", effort.rawValue] }
         p.process.executableURL = URL(fileURLWithPath: claude)
         p.process.arguments = args
         p.process.currentDirectoryURL = URL(fileURLWithPath: cwd)
@@ -124,7 +127,9 @@ public final class ManagedHost: @unchecked Sendable {
             guard let o = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
                   let type = o["type"] as? String else { continue }
             if type == "system", o["subtype"] as? String == "init", let sid = o["session_id"] as? String {
-                onEvent?(.initialized(hostId: hostId, sessionId: sid))
+                onEvent?(.initialized(hostId: hostId, sessionId: sid, model: o["model"] as? String))
+            } else if type == "rate_limit_event", let r = RateLimits.parse(o) {
+                onEvent?(.rateLimits(r))
             } else if type == "result" {
                 onEvent?(.result(hostId: hostId, text: o["result"] as? String ?? "",
                                  isError: o["is_error"] as? Bool ?? false))

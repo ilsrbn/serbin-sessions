@@ -8,6 +8,8 @@ Expanded (hover / pin / hotkey): session list, transcript, approve/deny, message
 - Approve / deny tool calls from the notch (⌘Y / ⌘N). If the app is down or you answer in the terminal, the card disappears and Claude Code's normal flow takes over.
 - Start sessions from the panel (`claude -p` with stream-json), send follow-ups, stop, resume past sessions.
 - Transcript view (text, tool calls, results) read from `~/.claude/projects/*.jsonl`.
+- Session info bar: model, effort, context fill (from the transcript). Model/effort menus apply to the next message (the `-p` process is restarted with `--resume --model --effort`); not available for a live terminal session. Effort is only known for sessions started here.
+- Footer: plan limits (5h / 7d) taken from `rate_limit_event` of panel-started sessions (last value persisted, dimmed when old), and a launch-at-login toggle (needs the .app bundle).
 - Restores recently active sessions after a restart; optional tick sound (off by default, speaker button in the footer) for requests that need you. Sound and the "Done" flash are skipped while a terminal/editor is frontmost.
 
 ## Build & run
@@ -38,4 +40,4 @@ Commands: `toggle`, `open` (focus the message box), `new` (open the New session 
 - Unsigned/ad-hoc build: Gatekeeper prompt on first launch (right-click > Open). Not notarized.
 
 ## Not done
-Streaming partial text (transcript refreshes every ~1.5 s while running), multi-monitor choice, launch at login, iPhone relay.
+Streaming partial text (transcript refreshes every ~1.5 s while running), multi-monitor choice, iPhone relay.

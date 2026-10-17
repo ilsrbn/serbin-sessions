@@ -67,6 +67,15 @@ public struct Session: Identifiable {
     public var hostId: String?
     /// Terminal session closed (SessionEnd) or only known from history. Safe to resume.
     public var ended = false
+    /// Model and context fill from the transcript.
+    public var stats: SessionStats?
+    /// What the next panel-started run will use. Effort is not recorded in transcripts, so it is only
+    /// known for sessions started (or resumed) here.
+    public var model: ModelChoice?
+    public var effort: Effort?
+    /// What the attached `-p` process was started with.
+    var runModel: ModelChoice?
+    var runEffort: Effort?
 
     public var isManaged: Bool { hostId != nil }
     public var title: String { (cwd as NSString).lastPathComponent }
@@ -78,6 +87,7 @@ public final class SessionStore: ObservableObject {
     @Published public private(set) var pending: [PendingApproval] = []
     @Published public private(set) var transcripts: [String: [TranscriptItem]] = [:]
     @Published public var lastError: String?
+    @Published public private(set) var rateLimits: RateLimits? = RateLimits.load()
 
     private let host = ManagedHost()
     private var refreshing: Set<String> = []
@@ -189,11 +199,12 @@ public final class SessionStore: ObservableObject {
         refreshing.insert(sessionId)
         Task.detached(priority: .utility) {
             try? await Task.sleep(nanoseconds: 250_000_000) // debounce bursts of events
-            let items = TranscriptReader.tail(path: path)
+            let (items, stats) = TranscriptReader.read(path: path)
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 self.refreshing.remove(sessionId)
                 if self.transcripts[sessionId] != items { self.transcripts[sessionId] = items }
+                if let stats, self.sessions[sessionId]?.stats != stats { self.sessions[sessionId]?.stats = stats }
             }
         }
     }
@@ -233,15 +244,22 @@ public final class SessionStore: ObservableObject {
 
     // MARK: Managed sessions
 
-    public func startManaged(cwd: String, prompt: String, mode: PermissionMode, resume: String? = nil) {
+    public func startManaged(cwd: String, prompt: String, mode: PermissionMode, resume: String? = nil,
+                             model: ModelChoice? = nil, effort: Effort? = nil) {
         do {
-            let hostId = try host.start(cwd: cwd, prompt: prompt, mode: mode, resume: resume)
+            let hostId = try host.start(cwd: cwd, prompt: prompt, mode: mode, resume: resume,
+                                        model: model, effort: effort)
             var s = Session(id: resume ?? "starting-\(hostId)", cwd: cwd)
             s.hostId = hostId
+            s.model = model
+            s.effort = effort
+            s.runModel = model
+            s.runEffort = effort
             s.lastPrompt = prompt
             s.state = .running(tool: nil)
             if let resume, let old = sessions[resume] {
                 s.transcriptPath = old.transcriptPath
+                s.stats = old.stats
             }
             sessions[s.id] = s
         } catch {
@@ -251,9 +269,28 @@ public final class SessionStore: ObservableObject {
 
     public func send(_ text: String, to sessionId: String) {
         guard let s = sessions[sessionId], let hostId = s.hostId else { return }
+        if s.model != s.runModel || s.effort != s.runEffort {
+            host.stop(hostId: hostId)
+            sessions[sessionId]?.hostId = nil // its .exited is ignored from here on
+            startManaged(cwd: s.cwd, prompt: text, mode: .default, resume: sessionId, model: s.model, effort: s.effort)
+            return
+        }
         host.send(hostId: hostId, text: text)
         sessions[sessionId]?.state = .running(tool: nil)
         sessions[sessionId]?.lastPrompt = text
+    }
+
+    /// Remembers the choice. It applies to the next message: a running `-p` process cannot change
+    /// model or effort, so `send` restarts it with `--resume` when they differ from what it was started with.
+    public func configure(_ sessionId: String, model: ModelChoice?, effort: Effort?) {
+        sessions[sessionId]?.model = model
+        sessions[sessionId]?.effort = effort
+    }
+
+    /// Start or resume with whatever model / effort the session is configured for.
+    public func resume(_ sessionId: String, prompt: String) {
+        guard let s = sessions[sessionId] else { return }
+        startManaged(cwd: s.cwd, prompt: prompt, mode: .default, resume: sessionId, model: s.model, effort: s.effort)
     }
 
     public func stop(_ sessionId: String) {
@@ -268,9 +305,13 @@ public final class SessionStore: ObservableObject {
 
     private func handleManaged(_ e: ManagedEvent) {
         switch e {
-        case .initialized(let hostId, let sid):
+        case .rateLimits(let r):
+            rateLimits = r
+            r.save()
+        case .initialized(let hostId, let sid, let model):
             guard let tmp = sessionId(forHost: hostId) else { return }
             var s = sessions[tmp]!
+            if let model { s.stats = SessionStats(model: model, contextTokens: s.stats?.contextTokens ?? 0) }
             if tmp != sid {
                 sessions[tmp] = nil
                 if let hooked = sessions[sid] { // hook SessionStart arrived first

@@ -12,6 +12,7 @@ struct SessionDetailView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            infoBar
             Divider().overlay(Color.primary.opacity(0.12))
             transcript
         }
@@ -54,14 +55,51 @@ struct SessionDetailView: View {
             if session.isManaged {
                 Button("Stop") { store.stop(session.id) }
             } else if session.state == .done || session.state.isFailed {
-                Button("Resume here") {
-                    store.startManaged(cwd: session.cwd, prompt: "continue", mode: .default, resume: session.id)
-                }.help("Continue this session from the panel")
+                Button("Resume here") { store.resume(session.id, prompt: "continue") }.help("Continue this session from the panel")
             }
             Button("Terminal") { openTerminal(session.cwd) }
         }
         .buttonStyle(.borderless).controlSize(.small)
         .padding(.horizontal, 12).padding(.vertical, 8)
+    }
+
+    /// Model, effort and context fill. Changes apply to the next message; a live terminal session
+    /// can't be changed from here.
+    private var infoBar: some View {
+        let editable = session.isManaged || session.state == .done || session.state.isFailed || session.state == .idle
+        let running = session.stats?.model
+        let wanted = session.model
+        return HStack(spacing: 10) {
+            Menu {
+                Button("Keep current") { store.configure(session.id, model: nil, effort: session.effort) }
+                ForEach(ModelChoice.allCases, id: \.self) { m in
+                    Button(m.label) { store.configure(session.id, model: m, effort: session.effort) }
+                }
+            } label: {
+                Text(modelLabel(running: running, wanted: wanted))
+            }
+            .disabled(!editable)
+            Menu {
+                Button("Default") { store.configure(session.id, model: session.model, effort: nil) }
+                ForEach(Effort.allCases, id: \.self) { e in
+                    Button(e.label) { store.configure(session.id, model: session.model, effort: e) }
+                }
+            } label: {
+                Text("Effort: " + (session.effort?.label ?? "default"))
+            }
+            .disabled(!editable)
+            Spacer()
+            if let st = session.stats, st.contextTokens > 0 { ContextMeter(stats: st) }
+        }
+        .menuStyle(.borderlessButton).fixedSize(horizontal: false, vertical: true)
+        .font(.caption).foregroundStyle(.secondary)
+        .padding(.horizontal, 12).padding(.bottom, 6)
+    }
+
+    private func modelLabel(running: String?, wanted: ModelChoice?) -> String {
+        let now = running.map(friendlyModelName) ?? "model ?"
+        guard let wanted, running?.contains(wanted.rawValue) != true else { return now }
+        return "\(now) → \(wanted.label)"
     }
 
     private func openTerminal(_ cwd: String) {
@@ -74,6 +112,22 @@ struct SessionDetailView: View {
 
 extension SessionState {
     var isFailed: Bool { if case .failed = self { return true }; return false }
+}
+
+struct ContextMeter: View {
+    let stats: SessionStats
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("\(stats.contextTokens / 1000)k / \(stats.contextWindow / 1000)k").monospacedDigit()
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.12))
+                Capsule().fill(stats.contextFraction > 0.8 ? Theme.amber : Color.white.opacity(0.6))
+                    .frame(width: 60 * stats.contextFraction)
+            }.frame(width: 60, height: 4)
+        }
+        .help("Context used by the last request (\(Int(stats.contextFraction * 100))%)")
+    }
 }
 
 struct ItemRow: View {
@@ -123,22 +177,26 @@ struct NewSessionView: View {
                 .font(.callout).frame(height: 90)
                 .scrollContentBackground(.hidden)
                 .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+            Picker("Mode", selection: $form.mode) {
+                Text("Ask").tag(PermissionMode.default)
+                Text("Accept edits").tag(PermissionMode.acceptEdits)
+                Text("Plan").tag(PermissionMode.plan)
+            }.pickerStyle(.segmented).labelsHidden()
             HStack {
-                Picker("Mode", selection: $form.mode) {
-                    Text("Ask").tag(PermissionMode.default)
-                    Text("Accept edits").tag(PermissionMode.acceptEdits)
-                    Text("Plan").tag(PermissionMode.plan)
-                }.pickerStyle(.segmented).frame(width: 260)
-                Spacer()
-                Button("Start") {
-                    store.startManaged(cwd: form.cwd, prompt: form.prompt, mode: form.mode)
-                    form.prompt = ""
-                    ui.showingNew = false
-                    ui.selectedId = store.ordered.first(where: { $0.isManaged })?.id
-                }
-                .islandButton(prominent: true)
-                .disabled(form.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                          || !FileManager.default.fileExists(atPath: form.cwd))
+                Picker("Model", selection: $form.model) {
+                    Text("Default").tag(ModelChoice?.none)
+                    ForEach(ModelChoice.allCases, id: \.self) { Text($0.label).tag(Optional($0)) }
+                }.fixedSize()
+                Picker("Effort", selection: $form.effort) {
+                    Text("Default").tag(Effort?.none)
+                    ForEach(Effort.allCases, id: \.self) { Text($0.label).tag(Optional($0)) }
+                }.fixedSize()
+                Spacer(minLength: 8)
+                Button("Start", action: start)
+                    .islandButton(prominent: true)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .help("Start (⌘↵)")
+                    .disabled(!canStart)
             }
             Divider().overlay(Color.primary.opacity(0.12))
             Text("Recent").font(.caption.bold()).foregroundStyle(.secondary)
@@ -155,7 +213,8 @@ struct NewSessionView: View {
                         }.buttonStyle(.plain)
                         .contextMenu {
                             Button("Resume this session") {
-                                store.startManaged(cwd: r.cwd, prompt: "continue", mode: form.mode, resume: r.id)
+                                store.startManaged(cwd: r.cwd, prompt: "continue", mode: form.mode, resume: r.id,
+                                                   model: form.model, effort: form.effort)
                                 ui.showingNew = false
                                 ui.selectedId = r.id
                             }
@@ -166,6 +225,20 @@ struct NewSessionView: View {
         }
         .padding(14)
         .onAppear { form.recent = RecentSessions.scan() }
+    }
+
+    private var canStart: Bool {
+        !form.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && FileManager.default.fileExists(atPath: form.cwd)
+    }
+
+    private func start() {
+        guard canStart else { return }
+        store.startManaged(cwd: form.cwd, prompt: form.prompt, mode: form.mode,
+                           model: form.model, effort: form.effort)
+        form.prompt = ""
+        ui.showingNew = false
+        ui.selectedId = store.ordered.first(where: { $0.isManaged })?.id
     }
 
     private func chooseFolder() {
@@ -181,6 +254,8 @@ final class NewSessionForm: ObservableObject {
     @Published var cwd = NSHomeDirectory() + "/Dev"
     @Published var prompt = ""
     @Published var mode: PermissionMode = .default
+    @Published var model: ModelChoice?
+    @Published var effort: Effort?
     @Published var recent: [RecentSession] = []
 }
 
@@ -227,7 +302,7 @@ struct Composer: View {
         let t = ui.draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty, let s = session, canSend else { return }
         if s.isManaged { store.send(t, to: s.id) }
-        else { store.startManaged(cwd: s.cwd, prompt: t, mode: .default, resume: s.id) }
+        else { store.resume(s.id, prompt: t) }
         ui.draft = ""
     }
 }

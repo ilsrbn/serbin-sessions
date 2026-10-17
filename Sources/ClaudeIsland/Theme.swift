@@ -7,6 +7,8 @@ enum Theme {
     static let hairline = Color.white.opacity(0.10)
     /// The one attention color: something needs you. Everything else stays neutral.
     static let amber = Color(red: 1.0, green: 0.72, blue: 0.22)
+    /// A run finished successfully.
+    static let green = Color(red: 0.30, green: 0.85, blue: 0.45)
 }
 
 struct IslandButtonStyle: ButtonStyle {

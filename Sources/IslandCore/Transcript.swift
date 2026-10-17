@@ -10,25 +10,33 @@ public struct TranscriptItem: Identifiable, Equatable, Sendable {
 /// Reads the tail of a Claude Code transcript (JSONL) into displayable items.
 public enum TranscriptReader {
     public static func tail(path: String, maxBytes: Int = 600_000, maxItems: Int = 120) -> [TranscriptItem] {
-        guard let h = FileHandle(forReadingAtPath: path) else { return [] }
+        read(path: path, maxBytes: maxBytes, maxItems: maxItems).items
+    }
+
+    /// Displayable items plus the model / context size of the newest assistant turn in the window.
+    public static func read(path: String, maxBytes: Int = 600_000, maxItems: Int = 120)
+        -> (items: [TranscriptItem], stats: SessionStats?) {
+        guard let h = FileHandle(forReadingAtPath: path) else { return ([], nil) }
         defer { try? h.close() }
         let size = (try? h.seekToEnd()) ?? 0
         let start = size > UInt64(maxBytes) ? size - UInt64(maxBytes) : 0
         try? h.seek(toOffset: start)
-        guard var data = try? h.readToEnd() else { return [] }
+        guard var data = try? h.readToEnd() else { return ([], nil) }
         if start > 0, let nl = data.firstIndex(of: 0x0A) { data = data.suffix(from: data.index(after: nl)) }
         var items: [TranscriptItem] = []
+        var stats: SessionStats?
         for line in data.split(separator: 0x0A, omittingEmptySubsequences: true) {
             guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { continue }
             // Id = byte offset of the line in the file (+ block index). The file is append-only, so an
             // item keeps its id however the visible window slides; positional ids made every row
             // change identity on each new message and the list jumped.
+            if let st = SessionStats.parse(obj) { stats = st }
             let lineOffset = Int(start) + line.startIndex
             for (i, (kind, text)) in parse(obj).enumerated() {
                 items.append(TranscriptItem(id: lineOffset * 1000 + min(i, 999), kind: kind, text: text))
             }
         }
-        return Array(items.suffix(maxItems))
+        return (Array(items.suffix(maxItems)), stats)
     }
 
     static func parse(_ obj: [String: Any]) -> [(TranscriptItem.Kind, String)] {
