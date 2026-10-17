@@ -28,3 +28,15 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 codesign --force --deep --sign - "$APP"
 echo "Built $APP  (hooks binary: $APP/Contents/MacOS/notch-hook)"
+
+# Hooks in ~/.claude/settings.json point at /Applications, so always install the fresh build there
+# and relaunch it (skip with NO_INSTALL=1).
+if [ -z "${NO_INSTALL:-}" ]; then
+  DEST="/Applications/Serbin Sessions.app"
+  killall SerbinSessions 2>/dev/null || true
+  sleep 1
+  rm -rf "$DEST"
+  ditto "$APP" "$DEST"
+  open "$DEST"
+  echo "Installed and launched $DEST"
+fi

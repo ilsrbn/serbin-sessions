@@ -169,11 +169,17 @@ struct EdgeLight: View {
         TimelineView(.animation) { ctx in
             let (p, o) = phase(ctx.date)
             let color = urgent ? Theme.amber : Theme.green
+            // A finish is the easier one to miss, so it gets a thicker line and a wider halo.
+            let core: CGFloat = urgent ? 1.5 : 3.5
             ZStack {
+                if !urgent {
+                    EdgeLine().trim(from: 0.5 - p / 2, to: 0.5 + p / 2)
+                        .stroke(color, style: StrokeStyle(lineWidth: 12, lineCap: .round)).blur(radius: 8).opacity(0.45 * o)
+                }
                 EdgeLine().trim(from: 0.5 - p / 2, to: 0.5 + p / 2)
-                    .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round)).blur(radius: 3).opacity(0.75 * o)
+                    .stroke(color, style: StrokeStyle(lineWidth: core * 2, lineCap: .round)).blur(radius: 3).opacity(0.75 * o)
                 EdgeLine().trim(from: 0.5 - p / 2, to: 0.5 + p / 2)
-                    .stroke(color, style: StrokeStyle(lineWidth: 1.5, lineCap: .round)).opacity(o)
+                    .stroke(color, style: StrokeStyle(lineWidth: core, lineCap: .round)).opacity(o)
             }
         }
         .allowsHitTesting(false)
@@ -187,7 +193,10 @@ struct EdgeLight: View {
             return (ease(e / 0.7), 0.7 + 0.3 * sin(now.timeIntervalSinceReferenceDate * 2.4))
         }
         let e = now.timeIntervalSince(ui.doneStart)
-        return (ease(e / 0.7), e < 1.6 ? 1 : max(0, 1 - (e - 1.6) / 0.9))
+        // Sweep in, one slow breath (dim and back), hold, then fade out by ~4.5s.
+        let breath = e > 0.7 && e < 2.5 ? 1 - 0.35 * sin((e - 0.7) / 1.8 * .pi) : 1
+        let fade = e < 3.6 ? 1 : max(0, 1 - (e - 3.6) / 0.9)
+        return (ease(e / 0.6), breath * fade)
     }
 }
 

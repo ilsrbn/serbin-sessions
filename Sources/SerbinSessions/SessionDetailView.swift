@@ -140,8 +140,7 @@ struct ItemRow: View {
                 .padding(8).frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
         case .assistant:
-            Text(markdown(item.text)).font(.callout).textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            MarkdownView(item.text)
         case .tool(let name):
             HStack(alignment: .top, spacing: 6) {
                 Image(systemName: "wrench.and.screwdriver").font(.caption2)
@@ -152,11 +151,6 @@ struct ItemRow: View {
             Text(item.text).font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(.tertiary).lineLimit(2).padding(.leading, 18)
         }
-    }
-
-    private func markdown(_ s: String) -> AttributedString {
-        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-            ?? AttributedString(s)
     }
 }
 

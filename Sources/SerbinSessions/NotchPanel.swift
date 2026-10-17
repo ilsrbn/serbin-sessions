@@ -40,11 +40,11 @@ final class NotchUIState: ObservableObject {
 
     /// Several finishes inside the window collapse into one "N sessions" signal.
     func flashDone(_ title: String) {
-        if doneFlash.isEmpty || Date().timeIntervalSince(doneStart) > 1.8 { doneStart = Date() }
+        if doneFlash.isEmpty || Date().timeIntervalSince(doneStart) > 2.5 { doneStart = Date() }
         if !doneFlash.contains(title) { doneFlash.append(title) }
         flashClear?.cancel()
         flashClear = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(2.8))
+            try? await Task.sleep(for: .seconds(4.6))
             guard !Task.isCancelled else { return }
             self?.doneFlash = []
         }

@@ -58,3 +58,39 @@ final class IslandCoreTests: XCTestCase {
         XCTAssertNotNil(r?.sevenDay)
     }
 }
+
+final class MarkdownBlocksTests: XCTestCase {
+    func testBlocks() {
+        let md = """
+        # Title
+        Some **text**
+        more
+
+        | A | B |
+        |:--|--:|
+        | 1 | 2 |
+
+        - one
+          - nested
+        1. first
+
+        ```swift
+        let x = 1
+        ```
+        > quote
+        ![shot](/tmp/a.png)
+        ---
+        """
+        let b = MarkdownParser.parse(md)
+        XCTAssertEqual(b[0], .heading(level: 1, text: "Title"))
+        XCTAssertEqual(b[1], .paragraph("Some **text**\nmore"))
+        XCTAssertEqual(b[2], .table(header: ["A", "B"], aligns: [.leading, .trailing], rows: [["1", "2"]]))
+        guard case .list(let items) = b[3] else { return XCTFail("list") }
+        XCTAssertEqual(items.map(\.depth), [0, 1, 0])
+        XCTAssertEqual(items.last?.marker, "1.")
+        XCTAssertEqual(b[4], .code(language: "swift", text: "let x = 1"))
+        XCTAssertEqual(b[5], .quote("quote"))
+        XCTAssertEqual(b[6], .image(alt: "shot", url: "/tmp/a.png"))
+        XCTAssertEqual(b[7], .rule)
+    }
+}
