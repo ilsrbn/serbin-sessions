@@ -201,7 +201,7 @@ struct Composer: View {
                 .focused($focused)
                 .disabled(!canSend)
                 .onSubmit(send)
-                .onExitCommand { ui.typing = false; ui.hovering = false; NSApp.keyWindow?.resignKey() }
+                .onExitCommand { ui.closeRequest += 1 }
             Button("Send", action: send).islandButton(prominent: true)
                 .disabled(!canSend || ui.draft.trimmingCharacters(in: .whitespaces).isEmpty)
         }

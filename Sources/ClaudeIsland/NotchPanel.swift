@@ -13,6 +13,8 @@ final class NotchUIState: ObservableObject {
     @Published var typing = false
     @Published var draft = ""
     @Published var focusTick = 0
+    /// Bumped by views (Esc in the composer) to ask the app to close the panel.
+    @Published var closeRequest = 0
     /// Physical notch width (0 on Macs without one) so the collapsed view can keep clear of it.
     var notchWidth: CGFloat = 0
     var notchHeight: CGFloat = 32
@@ -48,13 +50,38 @@ final class NotchPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
 
-    /// Summon from the hotkey: open, take keyboard focus, focus the composer.
+    /// App that had focus before we took it (Raycast-style: closing hands focus back to it).
+    private var previousApp: NSRunningApplication?
+    var onEscape: (() -> Void)?
+
+    override func cancelOperation(_ sender: Any?) { onEscape?() } // Esc anywhere in the panel
+
+    /// Summon: remember the frontmost app, open, take keyboard focus, focus the composer.
     @MainActor func summon(_ ui: NotchUIState) {
+        let me = ProcessInfo.processInfo.processIdentifier
+        if let front = NSWorkspace.shared.frontmostApplication, front.processIdentifier != me {
+            previousApp = front
+        }
         ui.typing = true
         ui.focusTick += 1
         NSApp.activate(ignoringOtherApps: true)
         makeKeyAndOrderFront(nil)
     }
+
+    /// Give up keyboard focus. With `restore`, the previously frontmost app gets focus back, but
+    /// only if we still hold it (if the user already switched elsewhere, leave their choice alone).
+    @MainActor func releaseFocus(restore: Bool) {
+        let wasActive = NSApp.isActive
+        resignKey()
+        if restore, wasActive, let app = previousApp, !app.isTerminated {
+            // macOS 14+ cooperative activation: the active app must hand activation over explicitly.
+            NSApp.yieldActivation(to: app)
+            app.activate()
+        }
+        previousApp = nil
+    }
+
+    var holdsFocus: Bool { isKeyWindow && NSApp.isActive }
 
     private var targetScreen: NSScreen? {
         NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main

@@ -33,13 +33,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak panel] in
                 ui.recompute(hasPending: !store.pending.isEmpty)
                 panel?.reposition(expanded: ui.expanded)
-                if ui.expanded && (ui.pinned || ui.showingNew) && !(panel?.isKeyWindow ?? true) { panel?.makeKey() }
+                if NSApp.isActive && ui.expanded && (ui.pinned || ui.showingNew) && !(panel?.isKeyWindow ?? true) { panel?.makeKey() }
             }
             .store(in: &cancellables)
 
         // Clicking away from the panel ends "typing" so it can collapse again.
         NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification, object: panel)
             .sink { _ in ui.typing = false }
+            .store(in: &cancellables)
+
+        // Esc closes and returns focus to the previous app.
+        panel.onEscape = { [weak self] in MainActor.assumeIsolated { self?.perform(.close) } }
+        ui.$closeRequest.dropFirst()
+            .sink { [weak self] _ in MainActor.assumeIsolated { self?.perform(.close) } }
+            .store(in: &cancellables)
+
+        // Switching to another app (click elsewhere, Cmd-Tab) dismisses the panel without
+        // stealing focus back, like Raycast. Hover-opened and pinned panels are left alone.
+        NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.ui.typing = false
+                    if !self.ui.pinned { self.ui.showingNew = false }
+                    self.panel?.releaseFocus(restore: false)
+                }
+            }
             .store(in: &cancellables)
 
         // Global hotkey: ⌃⌥Space opens the panel with the composer focused (again: closes it).
@@ -83,7 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func perform(_ cmd: IslandCommand) {
         guard let panel else { return }
         switch cmd {
-        case .toggle: perform(ui.expanded ? .close : .open)
+        case .toggle: perform(panel.holdsFocus ? .close : .open)
         case .open: panel.summon(ui)
         case .new:
             ui.showingNew = true
@@ -91,7 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .close:
             ui.typing = false; ui.pinned = false; ui.showingNew = false; ui.hovering = false
             hoverNeedsExit = true
-            panel.resignKey()
+            panel.releaseFocus(restore: true)
         }
     }
 
