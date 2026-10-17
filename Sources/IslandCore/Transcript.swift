@@ -18,17 +18,17 @@ public enum TranscriptReader {
         guard var data = try? h.readToEnd() else { return [] }
         if start > 0, let nl = data.firstIndex(of: 0x0A) { data = data.suffix(from: data.index(after: nl)) }
         var items: [TranscriptItem] = []
-        var n = 0
         for line in data.split(separator: 0x0A, omittingEmptySubsequences: true) {
             guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { continue }
-            for (kind, text) in parse(obj) {
-                items.append(TranscriptItem(id: n, kind: kind, text: text))
-                n += 1
+            // Id = byte offset of the line in the file (+ block index). The file is append-only, so an
+            // item keeps its id however the visible window slides; positional ids made every row
+            // change identity on each new message and the list jumped.
+            let lineOffset = Int(start) + line.startIndex
+            for (i, (kind, text)) in parse(obj).enumerated() {
+                items.append(TranscriptItem(id: lineOffset * 1000 + min(i, 999), kind: kind, text: text))
             }
         }
-        return Array(items.suffix(maxItems)).enumerated().map {
-            TranscriptItem(id: $0.offset, kind: $0.element.kind, text: $0.element.text)
-        }
+        return Array(items.suffix(maxItems))
     }
 
     static func parse(_ obj: [String: Any]) -> [(TranscriptItem.Kind, String)] {

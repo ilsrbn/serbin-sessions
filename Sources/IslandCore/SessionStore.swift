@@ -1,6 +1,40 @@
 import Foundation
 import Combine
 
+/// One "don't ask again" option from Claude Code, ready to hand back as `updatedPermissions`.
+public struct PermissionSuggestion: Identifiable {
+    public let entry: JSONValue
+    public let label: String
+    public var id: String { label }
+
+    init?(_ entry: JSONValue) {
+        guard let type = entry["type"]?.stringValue else { return nil }
+        self.entry = entry
+        let scope: String = switch entry["destination"]?.stringValue {
+        case "session": "this session"
+        case "localSettings": "this project, just me"
+        case "projectSettings": "this project, shared"
+        case "userSettings": "all projects"
+        default: "from now on"
+        }
+        switch type {
+        case "addRules":
+            var rules: [String] = []
+            if case .array(let rs)? = entry["rules"] {
+                rules = rs.compactMap { r in
+                    guard let t = r["toolName"]?.stringValue else { return nil }
+                    if let c = r["ruleContent"]?.stringValue { return "\(t)(\(c))" }
+                    return t
+                }
+            }
+            label = "\(rules.joined(separator: ", ")) · \(scope)"
+        case "setMode": label = "Switch to \(entry["mode"]?.stringValue ?? "mode") · \(scope)"
+        case "addDirectories": label = "Allow this directory · \(scope)"
+        default: return nil
+        }
+    }
+}
+
 public struct PendingApproval: Identifiable {
     public let id: String
     public let sessionId: String
@@ -8,6 +42,7 @@ public struct PendingApproval: Identifiable {
     public let summary: String
     /// Tools the hook cannot answer (e.g. AskUserQuestion) must be handled in the terminal.
     public let terminalOnly: Bool
+    public let suggestions: [PermissionSuggestion]
     let channel: ReplyChannel
 }
 
@@ -85,7 +120,8 @@ public final class SessionStore: ObservableObject {
             let approval = PendingApproval(
                 id: env.id, sessionId: e.sessionId, toolName: e.toolName ?? "tool",
                 summary: Self.summarize(e.toolName, e.toolInput),
-                terminalOnly: e.toolName == "AskUserQuestion", channel: channel)
+                terminalOnly: e.toolName == "AskUserQuestion",
+                suggestions: Self.suggestions(e.permissionSuggestions), channel: channel)
             pending.append(approval)
             channel.onCancel { [weak self] in
                 Task { @MainActor in self?.cancel(approvalId: approval.id) }
@@ -125,8 +161,11 @@ public final class SessionStore: ObservableObject {
         if case .needsInput = sessions[sessionId]?.state { sessions[sessionId]?.state = .done }
     }
 
-    public func resolve(_ approval: PendingApproval, _ decision: Decision, message: String? = nil) {
-        approval.channel.send(Reply(id: approval.id, decision: decision, message: message))
+    /// `remember` is one of `approval.suggestions`; it is applied by Claude Code together with the allow.
+    public func resolve(_ approval: PendingApproval, _ decision: Decision, message: String? = nil,
+                        remember: PermissionSuggestion? = nil) {
+        approval.channel.send(Reply(id: approval.id, decision: decision, message: message,
+                                    updatedPermissions: remember.map { .array([$0.entry]) }))
         pending.removeAll { $0.id == approval.id }
         settle(sessionId: approval.sessionId)
     }
@@ -260,6 +299,11 @@ public final class SessionStore: ObservableObject {
             for p in pending where p.sessionId == id { p.channel.send(Reply(id: p.id, decision: .ask)) }
             pending.removeAll { $0.sessionId == id }
         }
+    }
+
+    static func suggestions(_ raw: JSONValue?) -> [PermissionSuggestion] {
+        guard case .array(let items)? = raw else { return [] }
+        return items.compactMap(PermissionSuggestion.init)
     }
 
     static func summarize(_ tool: String?, _ input: JSONValue?) -> String {

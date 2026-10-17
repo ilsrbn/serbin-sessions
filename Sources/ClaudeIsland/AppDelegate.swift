@@ -31,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .merge(with: store.$pending.map { _ in })
             .receive(on: RunLoop.main)
             .sink { [weak panel] in
-                ui.recompute(hasPending: !store.pending.isEmpty)
+                ui.recompute()
                 panel?.reposition(expanded: ui.expanded)
             }
             .store(in: &cancellables)
@@ -72,11 +72,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { self?.perform(.toggle) }
         }
 
-        // Sound when a new approval shows up.
+        // Quiet signals. A run finishing flashes the pill for a few seconds; a new request that needs
+        // you plays an opt-in tick. Both stay silent while a terminal/editor is frontmost, since you
+        // are probably already looking at the session (heuristic: the app, not the exact tab).
+        store.$sessions.map { $0.mapValues(\.state) }
+            .scan(([String: SessionState](), [String: SessionState]())) { ($0.1, $1) }
+            .receive(on: RunLoop.main)
+            .sink { old, new in
+                MainActor.assumeIsolated {
+                    guard !Self.terminalInFront else { return }
+                    for (id, st) in new where st == .done && old[id]?.isRunning == true {
+                        if let title = store.sessions[id]?.title { ui.flashDone(title) }
+                    }
+                }
+            }
+            .store(in: &cancellables)
+
+        // The edge light sweeps in when something starts needing you.
+        store.$pending.map { _ in () }.merge(with: store.$sessions.map { _ in () })
+            .receive(on: RunLoop.main)
+            .map { MainActor.assumeIsolated { store.urgentCount > 0 } }
+            .removeDuplicates().filter { $0 }
+            .sink { _ in MainActor.assumeIsolated { ui.urgentStart = Date() } }
+            .store(in: &cancellables)
+
         store.$pending
             .map(\.count).removeDuplicates().scan((0, 0)) { ($0.1, $1) }
             .filter { $0.1 > $0.0 }
-            .sink { _ in NSSound(named: "Glass")?.play() }
+            .sink { _ in
+                MainActor.assumeIsolated {
+                    if ui.soundEnabled && !Self.terminalInFront { NSSound(named: "Tink")?.play() }
+                }
+            }
             .store(in: &cancellables)
 
         store.recover()
@@ -103,6 +130,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private static let terminalBundles: Set<String> = [
+        "com.apple.Terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty", "dev.warp.Warp-Stable",
+        "net.kovidgoyal.kitty", "org.alacritty", "com.github.wez.wezterm", "co.zeit.hyper",
+        "com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "com.jetbrains.intellij", "dev.zed.Zed",
+    ]
+
+    private static var terminalInFront: Bool {
+        NSWorkspace.shared.frontmostApplication?.bundleIdentifier.map(terminalBundles.contains) ?? false
+    }
+
     /// Panel control shared by the global hotkey, `notch-hook <cmd>` and claude-island:// URLs.
     @MainActor
     func perform(_ cmd: IslandCommand) {
@@ -114,7 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ui.showingNew = true
             panel.summon(ui)
         case .close:
-            ui.typing = false; ui.pinned = false; ui.showingNew = false; ui.hovering = false
+            ui.typing = false; ui.pinned = false; ui.showingNew = false; ui.hovering = false; ui.peeking = false
             hoverNeedsExit = true
             panel.releaseFocus()
         }
@@ -135,6 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let m = NSEvent.mouseLocation
         let now = Date()
         if ui.hovering {
+            ui.peeking = false
             // Stay open while the cursor is anywhere over the expanded panel (plus a margin).
             let keep = panel.rect(expanded: true)?.insetBy(dx: -12, dy: -12)
             if keep?.contains(m) == true { outsideSince = nil; return }
@@ -143,17 +181,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if now.timeIntervalSince(since) > 0.4 { ui.hovering = false; outsideSince = nil }
         } else {
             // Open after a short dwell on the collapsed notch area.
-            let trigger = panel.rect(expanded: false)?.insetBy(dx: -6, dy: -4).offsetBy(dx: 0, dy: -2)
+            let wide = ui.peeking || store.urgentCount > 0
+            let trigger = panel.collapsedRect(wide: wide, baseWidth: ui.baseWidth)?.insetBy(dx: -6, dy: -4).offsetBy(dx: 0, dy: -2)
             let inside = trigger.map { $0.contains(m) || m.y >= $0.maxY - 1 && abs(m.x - $0.midX) < $0.width / 2 } ?? false
             if hoverNeedsExit {
                 if !inside { hoverNeedsExit = false }
                 return
             }
+            // Two stages: a short rest on the notch slides the ears out (peek), a longer one opens the panel.
             if inside {
                 let since = insideSince ?? now
                 insideSince = since
-                if now.timeIntervalSince(since) > 0.12 { ui.hovering = true; insideSince = nil }
-            } else { insideSince = nil }
+                let dwell = now.timeIntervalSince(since)
+                if dwell > 0.1, !ui.peeking { ui.peeking = true }
+                if dwell > 0.4 { ui.hovering = true; ui.peeking = false; insideSince = nil }
+            } else {
+                insideSince = nil
+                if ui.peeking { ui.peeking = false }
+            }
         }
     }
 

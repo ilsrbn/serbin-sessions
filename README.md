@@ -1,14 +1,14 @@
 # Claude Island
 
-Notch panel for Claude Code sessions. Collapsed: status dot, count of sessions that need you, current tool.
-Expanded (hover / pin / any pending approval): session list, transcript, approve/deny, message input.
+Notch panel for Claude Code sessions. Collapsed: flat black pill, current tool; an amber line + count while something needs you; "Done" for a few seconds when a run finishes. Never opens by itself.
+Expanded (hover / pin / hotkey): session list, transcript, approve/deny, message input.
 
 ## Features
 - Observes any Claude Code session through hooks (terminal sessions keep working as usual).
 - Approve / deny tool calls from the notch (⌘Y / ⌘N). If the app is down or you answer in the terminal, the card disappears and Claude Code's normal flow takes over.
 - Start sessions from the panel (`claude -p` with stream-json), send follow-ups, stop, resume past sessions.
 - Transcript view (text, tool calls, results) read from `~/.claude/projects/*.jsonl`.
-- Restores recently active sessions after a restart; sound on new approval.
+- Restores recently active sessions after a restart; optional tick sound (off by default, speaker button in the footer) for requests that need you. Sound and the "Done" flash are skipped while a terminal/editor is frontmost.
 
 ## Build & run
     ./scripts/bundle.sh                       # build/ClaudeIsland.app (ad-hoc signed)

@@ -13,19 +13,32 @@ struct SessionDetailView: View {
         VStack(spacing: 0) {
             header
             Divider().overlay(Color.primary.opacity(0.12))
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 8) {
-                        ForEach(items) { ItemRow(item: $0).id($0.id) }
-                    }.padding(12)
-                }
-                .onChange(of: items.last?.id) { _, id in
-                    if let id { withAnimation { proxy.scrollTo(id, anchor: .bottom) } }
-                }
-                .onAppear { if let id = items.last?.id { proxy.scrollTo(id, anchor: .bottom) } }
-            }
+            transcript
         }
     }
+
+    /// Starts at, and follows, the newest message. Not lazy: heights must be known for the bottom
+    /// anchor to be exact. `.id(session.id)` gives each session a fresh scroll view that opens at the end.
+    private var transcript: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(items) { ItemRow(item: $0).id($0.id) }
+                    Color.clear.frame(height: 1).id(Self.bottomId)
+                }.padding(12)
+            }
+            .defaultScrollAnchor(.bottom)
+            .onChange(of: items.last?.id) { old, new in
+                guard new != nil else { return }
+                if old == nil { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
+                else { withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(Self.bottomId, anchor: .bottom) } }
+            }
+            .onAppear { proxy.scrollTo(Self.bottomId, anchor: .bottom) }
+        }
+        .id(session.id)
+    }
+
+    private static let bottomId = "bottom"
 
     private var header: some View {
         HStack {
@@ -71,7 +84,7 @@ struct ItemRow: View {
         case .user:
             Text(item.text).font(.callout)
                 .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.blue.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
+                .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
         case .assistant:
             Text(markdown(item.text)).font(.callout).textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)

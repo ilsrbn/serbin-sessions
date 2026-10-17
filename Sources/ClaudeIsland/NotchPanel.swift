@@ -15,15 +15,49 @@ final class NotchUIState: ObservableObject {
     @Published var focusTick = 0
     /// Bumped by views (Esc in the composer) to ask the app to close the panel.
     @Published var closeRequest = 0
+    /// Titles of sessions that just finished; shown briefly in the collapsed pill, then cleared.
+    @Published var doneFlash: [String] = []
+    private var flashClear: Task<Void, Never>?
+    /// Sound is opt-in, and only ever plays for requests that need the user.
+    @Published var soundEnabled = UserDefaults.standard.bool(forKey: "soundEnabled") {
+        didSet { UserDefaults.standard.set(soundEnabled, forKey: "soundEnabled") }
+    }
     /// Physical notch width (0 on Macs without one) so the collapsed view can keep clear of it.
     var notchWidth: CGFloat = 0
     var notchHeight: CGFloat = 32
+    /// Pill width with the ears out (signal / peek) and at rest (just the notch plus its shoulders).
+    var collapsedWidth: CGFloat = 300
+    var baseWidth: CGFloat = 110
+    /// While a signal is on, the pill drops this far below the notch so its whole lower edge is visible.
+    static let signalExtra: CGFloat = 3
+    /// Start of the current "done" sweep / "needs you" sweep, for the edge light.
+    var doneStart = Date.distantPast
+    var urgentStart = Date.distantPast
+    /// Cursor is resting on the notch: the ears slide out with a hint, before the full panel opens.
+    @Published var peeking = false
+    /// Last ear text shown, so the ears keep their content while they retract.
+    let earCache = EarCache()
 
-    func recompute(hasPending: Bool) {
-        let v = hovering || pinned || showingNew || typing || hasPending
+    /// Several finishes inside the window collapse into one "N sessions" signal.
+    func flashDone(_ title: String) {
+        if doneFlash.isEmpty || Date().timeIntervalSince(doneStart) > 1.8 { doneStart = Date() }
+        if !doneFlash.contains(title) { doneFlash.append(title) }
+        flashClear?.cancel()
+        flashClear = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(2.8))
+            guard !Task.isCancelled else { return }
+            self?.doneFlash = []
+        }
+    }
+
+    /// Never opens by itself: only hover, pin, the new-session form or typing expand the panel.
+    func recompute() {
+        let v = hovering || pinned || showingNew || typing
         if v != expanded { expanded = v }
     }
 }
+
+final class EarCache { var left = ""; var right = ""; var amber = false }
 
 /// Borderless, non-activating panel pinned to the top-center of the screen (over the notch).
 final class NotchPanel: NSPanel {
@@ -49,6 +83,8 @@ final class NotchPanel: NSPanel {
         measureNotch()
         ui.notchWidth = notchWidth
         ui.notchHeight = collapsedSize.height
+        ui.collapsedWidth = collapsedSize.width
+        ui.baseWidth = notchWidth > 0 ? Self.notchGap(notchWidth) : 110
         contentView = NSHostingView(rootView: NotchView(store: store, ui: ui))
         trackPreviousApp()
     }
@@ -153,6 +189,13 @@ final class NotchPanel: NSPanel {
     /// shoulders (the hardware cutout is visibly wider than `auxiliaryTop*Area` suggests).
     static func notchGap(_ notchWidth: CGFloat) -> CGFloat { notchWidth + 24 }
 
+    /// Hover target for the collapsed pill: just the notch at rest, the whole pill while its ears are out.
+    func collapsedRect(wide: Bool, baseWidth: CGFloat) -> NSRect? {
+        guard var r = rect(expanded: false) else { return nil }
+        if !wide { r = NSRect(x: r.midX - baseWidth / 2, y: r.minY, width: baseWidth, height: r.height) }
+        return r
+    }
+
     /// Screen rect the panel occupies in the given state (top-center of the notch screen).
     func rect(expanded: Bool) -> NSRect? {
         guard let screen = targetScreen else { return nil }
@@ -161,8 +204,11 @@ final class NotchPanel: NSPanel {
         return NSRect(x: f.midX - size.width / 2, y: f.maxY - size.height, width: size.width, height: size.height)
     }
 
+    /// The window is always full size and transparent; SwiftUI animates the black shape inside it, so
+    /// the pill grows smoothly instead of the window frame and the layout fighting each other.
+    /// While collapsed the empty window must not swallow clicks meant for the apps underneath.
     func reposition(expanded: Bool) {
-        guard let r = rect(expanded: expanded), r != frame else { return }
-        setFrame(r, display: true, animate: true) // hover is polled from the mouse position, so animating is safe
+        if let r = rect(expanded: true), r != frame { setFrame(r, display: true) }
+        ignoresMouseEvents = !expanded
     }
 }

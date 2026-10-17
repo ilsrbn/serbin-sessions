@@ -19,6 +19,8 @@ public struct HookEvent: Codable, Sendable {
     public var prompt: String?
     public var notificationType: String?
     public var lastAssistantMessage: String?
+    /// PermissionRequest only: the "don't ask again" options Claude Code would offer in its own dialog.
+    public var permissionSuggestions: JSONValue?
 
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
@@ -31,12 +33,14 @@ public struct HookEvent: Codable, Sendable {
         case prompt
         case notificationType = "notification_type"
         case lastAssistantMessage = "last_assistant_message"
+        case permissionSuggestions = "permission_suggestions"
     }
 
     public init(sessionId: String, hookEventName: String, cwd: String? = nil,
                 transcriptPath: String? = nil, toolName: String? = nil,
                 toolInput: JSONValue? = nil, message: String? = nil, prompt: String? = nil,
-                notificationType: String? = nil, lastAssistantMessage: String? = nil) {
+                notificationType: String? = nil, lastAssistantMessage: String? = nil,
+                permissionSuggestions: JSONValue? = nil) {
         self.sessionId = sessionId
         self.hookEventName = hookEventName
         self.cwd = cwd
@@ -47,6 +51,7 @@ public struct HookEvent: Codable, Sendable {
         self.prompt = prompt
         self.notificationType = notificationType
         self.lastAssistantMessage = lastAssistantMessage
+        self.permissionSuggestions = permissionSuggestions
     }
 }
 
@@ -72,11 +77,14 @@ public struct Reply: Codable, Sendable {
     public var id: String
     public var decision: Decision
     public var message: String?
+    /// allow only: permission update entries to apply (e.g. an "always allow" rule).
+    public var updatedPermissions: JSONValue?
 
-    public init(id: String, decision: Decision, message: String? = nil) {
+    public init(id: String, decision: Decision, message: String? = nil, updatedPermissions: JSONValue? = nil) {
         self.id = id
         self.decision = decision
         self.message = message
+        self.updatedPermissions = updatedPermissions
     }
 }
 
@@ -88,6 +96,10 @@ public enum HookOutput {
         guard reply.decision != .ask else { return nil }
         var decision: [String: Any] = ["behavior": reply.decision.rawValue]
         if reply.decision == .deny, let m = reply.message { decision["message"] = m }
+        if reply.decision == .allow, let u = reply.updatedPermissions,
+           let d = try? JSONEncoder().encode(u), let o = try? JSONSerialization.jsonObject(with: d) {
+            decision["updatedPermissions"] = o
+        }
         let obj: [String: Any] = [
             "hookSpecificOutput": [
                 "hookEventName": "PermissionRequest",
