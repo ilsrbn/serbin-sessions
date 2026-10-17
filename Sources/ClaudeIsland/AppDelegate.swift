@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import Combine
 import IslandCore
+import Carbon.HIToolbox
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor private let store = SessionStore()
@@ -11,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var timer: Timer?
     private var hoverTimer: Timer?
+    private var hotKey: HotKey?
     private var insideSince: Date?
     private var outsideSince: Date?
 
@@ -22,15 +24,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.reposition(expanded: false)
         panel.orderFrontRegardless()
 
-        // Resize the panel when expansion state changes.
-        Publishers.CombineLatest4(ui.$hovering, ui.$pinned, ui.$showingNew, store.$pending)
+        // Resize the panel whenever anything that affects expansion changes.
+        ui.objectWillChange.map { _ in }
+            .merge(with: store.$pending.map { _ in })
             .receive(on: RunLoop.main)
-            .sink { [weak panel] hovering, pinned, showingNew, pending in
-                ui.recompute(hasPending: !pending.isEmpty)
+            .sink { [weak panel] in
+                ui.recompute(hasPending: !store.pending.isEmpty)
                 panel?.reposition(expanded: ui.expanded)
-                if ui.expanded && (pinned || showingNew) { panel?.makeKey() }
+                if ui.expanded && (ui.pinned || ui.showingNew) && !(panel?.isKeyWindow ?? true) { panel?.makeKey() }
             }
             .store(in: &cancellables)
+
+        // Clicking away from the panel ends "typing" so it can collapse again.
+        NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification, object: panel)
+            .sink { _ in ui.typing = false }
+            .store(in: &cancellables)
+
+        // Global hotkey: ⌃⌥Space opens the panel with the composer focused (again: closes it).
+        hotKey = HotKey(keyCode: UInt32(kVK_Space), modifiers: UInt32(controlKey | optionKey)) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, let panel = self.panel else { return }
+                if self.ui.typing {
+                    self.ui.typing = false; self.ui.hovering = false
+                    panel.resignKey()
+                } else { panel.summon(self.ui) }
+            }
+        }
 
         // Sound when a new approval shows up.
         store.$pending
@@ -87,5 +106,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @MainActor
     func applicationWillTerminate(_ notification: Notification) {
         store.stopAllManaged()
+    }
+}
+
+/// Minimal Carbon global hotkey (needs no Accessibility permission).
+final class HotKey {
+    nonisolated(unsafe) private static var action: (() -> Void)?
+    private var ref: EventHotKeyRef?
+
+    init(keyCode: UInt32, modifiers: UInt32, action: @escaping () -> Void) {
+        Self.action = action
+        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in HotKey.action?(); return noErr },
+                            1, &spec, nil, nil)
+        let id = EventHotKeyID(signature: OSType(0x434C4953), id: 1)
+        RegisterEventHotKey(keyCode, modifiers, id, GetApplicationEventTarget(), 0, &ref)
     }
 }

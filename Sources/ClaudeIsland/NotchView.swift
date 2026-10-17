@@ -98,6 +98,7 @@ struct ExpandedView: View {
                     else { Text("No Claude Code sessions").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity) }
                 }
             }
+            if !ui.showingNew { Composer(store: store, ui: ui, session: selected) }
             footer
         }
     }
@@ -148,6 +149,7 @@ struct ExpandedView: View {
             Button { ui.showingNew.toggle() } label: { Label("New session", systemImage: "plus") }
             Spacer()
             if let e = store.lastError { Text(e).font(.caption).foregroundStyle(.red).lineLimit(1) }
+            Text("⌃⌥Space").font(.caption2).foregroundStyle(.tertiary).help("Global hotkey: open and type")
             Button { ui.pinned.toggle() } label: { Image(systemName: ui.pinned ? "pin.fill" : "pin") }
                 .help("Keep open")
             Button { NSApp.terminate(nil) } label: { Image(systemName: "power") }.help("Quit")

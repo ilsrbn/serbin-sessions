@@ -9,11 +9,16 @@ final class NotchUIState: ObservableObject {
     @Published var showingNew = false
     @Published var selectedId: String?
     @Published var expanded = false
+    /// Composer has keyboard focus (or was summoned by the hotkey). Cleared when the panel loses key status.
+    @Published var typing = false
+    @Published var draft = ""
+    @Published var focusTick = 0
     /// Physical notch width (0 on Macs without one) so the collapsed view can keep clear of it.
     var notchWidth: CGFloat = 0
 
     func recompute(hasPending: Bool) {
-        expanded = hovering || pinned || showingNew || hasPending
+        let v = hovering || pinned || showingNew || typing || hasPending
+        if v != expanded { expanded = v }
     }
 }
 
@@ -41,6 +46,14 @@ final class NotchPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
 
+    /// Summon from the hotkey: open, take keyboard focus, focus the composer.
+    @MainActor func summon(_ ui: NotchUIState) {
+        ui.typing = true
+        ui.focusTick += 1
+        NSApp.activate(ignoringOtherApps: true)
+        makeKeyAndOrderFront(nil)
+    }
+
     private var targetScreen: NSScreen? {
         NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main
     }
@@ -67,6 +80,6 @@ final class NotchPanel: NSPanel {
 
     func reposition(expanded: Bool) {
         guard let r = rect(expanded: expanded), r != frame else { return }
-        setFrame(r, display: true, animate: false) // animating moves the window under the cursor => hover flicker
+        setFrame(r, display: true, animate: true) // hover is polled from the mouse position, so animating is safe
     }
 }

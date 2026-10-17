@@ -7,9 +7,6 @@ struct SessionDetailView: View {
     @ObservedObject var ui: NotchUIState
     let session: Session
 
-    @StateObject private var form = DetailForm()
-    @FocusState private var focused: Bool
-
     private var items: [TranscriptItem] { store.transcripts[session.id] ?? [] }
 
     var body: some View {
@@ -27,7 +24,6 @@ struct SessionDetailView: View {
                 }
                 .onAppear { if let id = items.last?.id { proxy.scrollTo(id, anchor: .bottom) } }
             }
-            if session.isManaged { inputBar }
         }
     }
 
@@ -50,25 +46,6 @@ struct SessionDetailView: View {
         }
         .buttonStyle(.borderless).controlSize(.small)
         .padding(.horizontal, 12).padding(.vertical, 8)
-    }
-
-    private var inputBar: some View {
-        HStack {
-            TextField("Message Claude…", text: $form.draft)
-                .textFieldStyle(.roundedBorder)
-                .focused($focused)
-                .onSubmit(send)
-                .onChange(of: focused) { _, f in if f { ui.pinned = true } }
-            Button("Send", action: send).disabled(form.draft.trimmingCharacters(in: .whitespaces).isEmpty)
-        }
-        .padding(10)
-    }
-
-    private func send() {
-        let t = form.draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return }
-        store.send(t, to: session.id)
-        form.draft = ""
     }
 
     private func openTerminal(_ cwd: String) {
@@ -184,13 +161,56 @@ struct NewSessionView: View {
 }
 
 // @State needs the SwiftUIMacros plugin (full Xcode); plain ObservableObjects build everywhere.
-final class DetailForm: ObservableObject {
-    @Published var draft = ""
-}
-
 final class NewSessionForm: ObservableObject {
     @Published var cwd = NSHomeDirectory() + "/Dev"
     @Published var prompt = ""
     @Published var mode: PermissionMode = .default
     @Published var recent: [RecentSession] = []
+}
+
+/// Always-visible message box. Sends to the selected session; a finished terminal session is
+/// resumed as a managed one. Active terminal sessions can't be written to, so it is disabled.
+struct Composer: View {
+    @ObservedObject var store: SessionStore
+    @ObservedObject var ui: NotchUIState
+    let session: Session?
+    @FocusState private var focused: Bool
+
+    private var canSend: Bool {
+        guard let s = session else { return false }
+        if s.isManaged { return true }
+        switch s.state {
+        case .done, .failed, .idle: return true
+        default: return false
+        }
+    }
+
+    private var placeholder: String {
+        guard let s = session else { return "Start a session with “New session”" }
+        if canSend { return s.isManaged ? "Message \(s.title)…  (↵ send, esc close)" : "Resume \(s.title) with a message…" }
+        return "Terminal session is active — reply in the terminal"
+    }
+
+    var body: some View {
+        HStack {
+            TextField(placeholder, text: $ui.draft)
+                .textFieldStyle(.roundedBorder)
+                .focused($focused)
+                .disabled(!canSend)
+                .onSubmit(send)
+                .onExitCommand { ui.typing = false; ui.hovering = false; NSApp.keyWindow?.resignKey() }
+            Button("Send", action: send).disabled(!canSend || ui.draft.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .onChange(of: focused) { _, f in ui.typing = f }
+        .onChange(of: ui.focusTick) { _, _ in focused = true }
+    }
+
+    private func send() {
+        let t = ui.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty, let s = session, canSend else { return }
+        if s.isManaged { store.send(t, to: s.id) }
+        else { store.startManaged(cwd: s.cwd, prompt: t, mode: .default, resume: s.id) }
+        ui.draft = ""
+    }
 }
