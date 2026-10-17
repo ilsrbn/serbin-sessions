@@ -36,7 +36,11 @@ final class NotchPanel: NSPanel {
         super.init(contentRect: .zero,
                    styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: false)
+        // The init flag alone doesn't always set the window-server "prevents activation" tag.
+        styleMask.insert(.nonactivatingPanel)
         isFloatingPanel = true
+        becomesKeyOnlyIfNeeded = true // clicking Allow/Deny must not steal key status; text fields still can
+        hidesOnDeactivate = false
         level = .statusBar + 1
         backgroundColor = .clear
         isOpaque = false
@@ -46,42 +50,85 @@ final class NotchPanel: NSPanel {
         ui.notchWidth = notchWidth
         ui.notchHeight = collapsedSize.height
         contentView = NSHostingView(rootView: NotchView(store: store, ui: ui))
+        trackPreviousApp()
     }
 
     override var canBecomeKey: Bool { true }
 
-    /// App that had focus before we took it (Raycast-style: closing hands focus back to it).
-    private var previousApp: NSRunningApplication?
     var onEscape: (() -> Void)?
 
     override func cancelOperation(_ sender: Any?) { onEscape?() } // Esc anywhere in the panel
 
-    /// Summon: remember the frontmost app, open, take keyboard focus, focus the composer.
+    /// When the panel was last summoned. Focus-loss events right after that are the launcher
+    /// (Raycast) closing and handing focus back to the previous app, not the user clicking away.
+    private(set) var summonedAt = Date.distantPast
+    var inSummonGrace: Bool { Date().timeIntervalSince(summonedAt) < 0.6 }
+
+    /// Open and take keyboard focus. The launcher that triggered us is still dismissing itself and
+    /// re-activates the previous app a moment later, so re-assert focus a couple of times.
     @MainActor func summon(_ ui: NotchUIState) {
-        let me = ProcessInfo.processInfo.processIdentifier
-        if let front = NSWorkspace.shared.frontmostApplication, front.processIdentifier != me {
-            previousApp = front
-        }
+        summonedAt = Date()
         ui.typing = true
         ui.focusTick += 1
-        NSApp.activate(ignoringOtherApps: true)
-        makeKeyAndOrderFront(nil)
+        takeFocus()
+        for delay in [0.12, 0.3, 0.6] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak ui] in
+                guard let self, let ui, ui.typing, !self.isKeyWindow else { return }
+                self.takeFocus()
+            }
+        }
     }
 
-    /// Give up keyboard focus. With `restore`, the previously frontmost app gets focus back, but
-    /// only if we still hold it (if the user already switched elsewhere, leave their choice alone).
-    @MainActor func releaseFocus(restore: Bool) {
-        let wasActive = NSApp.isActive
-        resignKey()
-        if restore, wasActive, let app = previousApp, !app.isTerminated {
-            // macOS 14+ cooperative activation: the active app must hand activation over explicitly.
+    /// Key window WITHOUT activating the app (nonactivating panel): whatever app is in front,
+    /// e.g. a fullscreen video, stays the active app and keeps its own window state.
+    private func takeFocus() {
+        // A claude-island:// URL makes LaunchServices activate us. Give activation straight back so
+        // the user's app (and its fullscreen Space) stays active; we only keep key-window status.
+        if frontIsUs, let app = previousApp, !app.isTerminated {
             NSApp.yieldActivation(to: app)
             app.activate()
         }
-        previousApp = nil
+        orderFrontRegardless()
+        makeKey()
     }
 
-    var holdsFocus: Bool { isKeyWindow && NSApp.isActive }
+    private var frontIsUs: Bool {
+        NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+    }
+
+    /// Last app that was active before us. Tracked continuously because a `claude-island://` URL
+    /// opened from Raycast makes LaunchServices activate us *before* our handler runs.
+    private var previousApp: NSRunningApplication?
+    private var activationObserver: NSObjectProtocol?
+
+    func trackPreviousApp() {
+        let me = ProcessInfo.processInfo.processIdentifier
+        previousApp = NSWorkspace.shared.frontmostApplication.flatMap { $0.processIdentifier == me ? nil : $0 }
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.processIdentifier != me else { return }
+            self?.previousApp = app
+        }
+    }
+
+    /// Hand keystrokes back to whatever was underneath.
+    /// - Summoned without activation (hotkey / CLI): we were only the key window, so ordering out
+    ///   makes the still-active app underneath key again. Nothing else is touched.
+    /// - Activated by LaunchServices (URL): give activation back to the previous app explicitly.
+    @MainActor func releaseFocus() {
+        if frontIsUs, let app = previousApp, !app.isTerminated {
+            NSApp.yieldActivation(to: app) // macOS 14+ cooperative activation
+            app.activate()
+        }
+        if isKeyWindow {
+            orderOut(nil)
+            orderFrontRegardless()
+        }
+    }
+
+    var holdsFocus: Bool { isKeyWindow }
 
     private var targetScreen: NSScreen? {
         NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main

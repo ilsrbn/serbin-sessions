@@ -33,32 +33,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak panel] in
                 ui.recompute(hasPending: !store.pending.isEmpty)
                 panel?.reposition(expanded: ui.expanded)
-                if NSApp.isActive && ui.expanded && (ui.pinned || ui.showingNew) && !(panel?.isKeyWindow ?? true) { panel?.makeKey() }
             }
             .store(in: &cancellables)
 
-        // Clicking away from the panel ends "typing" so it can collapse again.
+        // Panel lost key status (click on another window, Cmd-Tab, Esc): stop "typing" so it can
+        // collapse, and drop the new-session form unless pinned. Never steal focus back.
+        let lostFocus = { [weak panel] in
+            guard let panel, !panel.inSummonGrace else { return }
+            ui.typing = false
+            if !ui.pinned { ui.showingNew = false }
+        }
         NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification, object: panel)
-            .sink { _ in ui.typing = false }
+            .sink { _ in MainActor.assumeIsolated { lostFocus() } }
+            .store(in: &cancellables)
+        NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
+            .sink { _ in MainActor.assumeIsolated { lostFocus() } }
             .store(in: &cancellables)
 
-        // Esc closes and returns focus to the previous app.
+        // After the last approval is answered the panel collapses; hand focus back to the app below.
+        store.$pending.map(\.isEmpty).removeDuplicates().filter { $0 }.dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, !self.ui.typing, !self.ui.pinned, !self.ui.showingNew else { return }
+                    self.panel?.releaseFocus()
+                }
+            }
+            .store(in: &cancellables)
+
+        // Esc closes the panel; focus simply returns to the app underneath.
         panel.onEscape = { [weak self] in MainActor.assumeIsolated { self?.perform(.close) } }
         ui.$closeRequest.dropFirst()
             .sink { [weak self] _ in MainActor.assumeIsolated { self?.perform(.close) } }
-            .store(in: &cancellables)
-
-        // Switching to another app (click elsewhere, Cmd-Tab) dismisses the panel without
-        // stealing focus back, like Raycast. Hover-opened and pinned panels are left alone.
-        NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)
-            .sink { [weak self] _ in
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-                    self.ui.typing = false
-                    if !self.ui.pinned { self.ui.showingNew = false }
-                    self.panel?.releaseFocus(restore: false)
-                }
-            }
             .store(in: &cancellables)
 
         // Global hotkey: ⌃⌥Space opens the panel with the composer focused (again: closes it).
@@ -110,7 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .close:
             ui.typing = false; ui.pinned = false; ui.showingNew = false; ui.hovering = false
             hoverNeedsExit = true
-            panel.releaseFocus(restore: true)
+            panel.releaseFocus()
         }
     }
 
