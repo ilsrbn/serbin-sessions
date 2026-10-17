@@ -12,7 +12,7 @@ struct SessionDetailView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().overlay(Color.white.opacity(0.1))
+            Divider().overlay(Color.primary.opacity(0.12))
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 8) {
@@ -109,7 +109,7 @@ struct NewSessionView: View {
             TextEditor(text: $form.prompt)
                 .font(.callout).frame(height: 90)
                 .scrollContentBackground(.hidden)
-                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
             HStack {
                 Picker("Mode", selection: $form.mode) {
                     Text("Ask").tag(PermissionMode.default)
@@ -123,11 +123,11 @@ struct NewSessionView: View {
                     ui.showingNew = false
                     ui.selectedId = store.ordered.first(where: { $0.isManaged })?.id
                 }
-                .buttonStyle(.borderedProminent)
+                .islandButton(prominent: true)
                 .disabled(form.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                           || !FileManager.default.fileExists(atPath: form.cwd))
             }
-            Divider().overlay(Color.white.opacity(0.1))
+            Divider().overlay(Color.primary.opacity(0.12))
             Text("Recent").font(.caption.bold()).foregroundStyle(.secondary)
             ScrollView {
                 VStack(alignment: .leading, spacing: 4) {
@@ -202,7 +202,8 @@ struct Composer: View {
                 .disabled(!canSend)
                 .onSubmit(send)
                 .onExitCommand { ui.typing = false; ui.hovering = false; NSApp.keyWindow?.resignKey() }
-            Button("Send", action: send).disabled(!canSend || ui.draft.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button("Send", action: send).islandButton(prominent: true)
+                .disabled(!canSend || ui.draft.trimmingCharacters(in: .whitespaces).isEmpty)
         }
         .padding(.horizontal, 12).padding(.vertical, 8)
         .onChange(of: focused) { _, f in ui.typing = f }

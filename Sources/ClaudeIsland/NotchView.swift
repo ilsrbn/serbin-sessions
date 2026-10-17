@@ -31,11 +31,20 @@ struct NotchView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            UnevenRoundedRectangle(bottomLeadingRadius: 18, bottomTrailingRadius: 18)
-                .fill(.black)
-            if ui.expanded { ExpandedView(store: store, ui: ui) } else { collapsed }
+            if ui.expanded {
+                // Glass body; the strip beside the physical notch stays black so the two merge.
+                Rectangle().fill(.clear)
+                    .islandGlass(UnevenRoundedRectangle(bottomLeadingRadius: 28, bottomTrailingRadius: 28))
+                Rectangle().fill(.black).frame(height: ui.notchHeight)
+                ExpandedView(store: store, ui: ui)
+            } else {
+                UnevenRoundedRectangle(bottomLeadingRadius: 18, bottomTrailingRadius: 18).fill(.black)
+                collapsed
+            }
         }
-        .preferredColorScheme(.dark)
+        .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: ui.expanded ? 28 : 18,
+                                          bottomTrailingRadius: ui.expanded ? 28 : 18))
+        .animation(.smooth(duration: 0.25), value: ui.expanded)
     }
 
     private var top: Session? { store.ordered.first }
@@ -91,7 +100,7 @@ struct ExpandedView: View {
             }
             HStack(spacing: 0) {
                 sidebar.frame(width: 210)
-                Divider().overlay(Color.white.opacity(0.1))
+                Divider().overlay(Color.primary.opacity(0.12))
                 Group {
                     if ui.showingNew { NewSessionView(store: store, ui: ui) }
                     else if let s = selected { SessionDetailView(store: store, ui: ui, session: s) }
@@ -135,7 +144,7 @@ struct ExpandedView: View {
                             if s.isManaged { Image(systemName: "bolt.fill").font(.caption2).foregroundStyle(.secondary) }
                         }
                         .padding(6)
-                        .background(selected?.id == s.id && !ui.showingNew ? Color.white.opacity(0.1) : .clear,
+                        .background(selected?.id == s.id && !ui.showingNew ? Color.primary.opacity(0.12) : .clear,
                                     in: RoundedRectangle(cornerRadius: 6))
                         .contentShape(Rectangle())
                     }.buttonStyle(.plain)
@@ -156,7 +165,7 @@ struct ExpandedView: View {
         }
         .buttonStyle(.borderless).controlSize(.small)
         .padding(.horizontal, 14).padding(.vertical, 8)
-        .background(Color.white.opacity(0.05))
+        .background(Color.primary.opacity(0.06))
     }
 }
 
@@ -177,7 +186,7 @@ struct ApprovalCard: View {
                 .font(.system(.caption, design: .monospaced))
                 .lineLimit(6).textSelection(.enabled)
                 .padding(8).frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
             HStack {
                 if approval.terminalOnly {
                     Text("Needs an answer in the terminal").font(.caption).foregroundStyle(.secondary)
@@ -185,9 +194,9 @@ struct ApprovalCard: View {
                     Button("Dismiss") { store.resolve(approval, .ask) }
                 } else {
                     Button("Deny") { store.resolve(approval, .deny, message: "Denied from Claude Island") }
-                        .keyboardShortcut("n", modifiers: .command)
+                        .keyboardShortcut("n", modifiers: .command).islandButton()
                     Button("Allow") { store.resolve(approval, .allow) }
-                        .keyboardShortcut("y", modifiers: .command).tint(.green)
+                        .keyboardShortcut("y", modifiers: .command).tint(.green).islandButton(prominent: true)
                     if !managed { // -p sessions have no terminal dialog to fall back to
                         Button("Ask in terminal") { store.resolve(approval, .ask) }
                     }
@@ -195,6 +204,6 @@ struct ApprovalCard: View {
             }
         }
         .padding(10)
-        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+        .islandGlass(RoundedRectangle(cornerRadius: 16), tint: .orange.opacity(0.28))
     }
 }
