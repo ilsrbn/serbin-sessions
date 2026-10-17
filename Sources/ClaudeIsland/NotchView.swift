@@ -32,13 +32,13 @@ struct NotchView: View {
     var body: some View {
         ZStack(alignment: .top) {
             if ui.expanded {
-                // Glass body; the strip beside the physical notch stays black so the two merge.
+                // Glass all the way up; the hardware notch simply covers its own middle part.
                 Rectangle().fill(.clear)
                     .islandGlass(UnevenRoundedRectangle(bottomLeadingRadius: 28, bottomTrailingRadius: 28))
-                Rectangle().fill(.black).frame(height: ui.notchHeight)
                 ExpandedView(store: store, ui: ui)
             } else {
-                UnevenRoundedRectangle(bottomLeadingRadius: 18, bottomTrailingRadius: 18).fill(.black)
+                Rectangle().fill(.clear)
+                    .islandGlass(UnevenRoundedRectangle(bottomLeadingRadius: 18, bottomTrailingRadius: 18))
                 collapsed
             }
         }
@@ -71,7 +71,7 @@ struct NotchView: View {
                 Text("\(urgent)").font(.caption.bold().monospacedDigit()).foregroundStyle(summaryColor)
             }
             Spacer(minLength: ui.notchWidth + 28) // real notch is a bit wider than the reported gap
-            Text(summaryText).font(.caption).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
+            Text(summaryText).font(.caption).foregroundStyle(.primary.opacity(0.85)).lineLimit(1)
         }
         .padding(.horizontal, 16)
         .frame(maxHeight: .infinity)
