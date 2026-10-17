@@ -34,7 +34,10 @@ struct SessionDetailView: View {
                 Text(session.cwd).font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.head)
             }
             Spacer()
-            Text(session.state.label).font(.caption).foregroundStyle(session.state.color).lineLimit(1)
+            Text(session.state.label).font(.caption).foregroundStyle(session.state.color).lineLimit(2).frame(maxWidth: 220, alignment: .trailing)
+            if case .needsInput = session.state {
+                Button("Dismiss") { store.dismiss(session.id) }.help("Clear this flag (answered in the terminal)")
+            }
             if session.isManaged {
                 Button("Stop") { store.stop(session.id) }
             } else if session.state == .done || session.state.isFailed {

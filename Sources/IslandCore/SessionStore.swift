@@ -15,7 +15,7 @@ public enum SessionState: Equatable {
     case idle
     case running(tool: String?)
     case needsApproval
-    case needsInput
+    case needsInput(String)
     case done
     case failed(String)
 }
@@ -88,9 +88,15 @@ public final class SessionStore: ObservableObject {
                 Task { @MainActor in self?.cancel(approvalId: approval.id) }
             }
         case "Notification":
-            s.lastMessage = e.message
-            if ["idle_prompt", "elicitation_dialog", "agent_needs_input"].contains(e.notificationType ?? "") {
-                s.state = .needsInput
+            // idle_prompt just means "Claude finished and has been idle"; it is not a question.
+            // Only real dialogs (elicitation / agent asking) count as needing you.
+            if let m = e.message { s.lastMessage = m }
+            switch e.notificationType ?? "" {
+            case "elicitation_dialog", "agent_needs_input":
+                s.state = .needsInput(e.message ?? e.notificationType ?? "input requested")
+            case "idle_prompt":
+                if case .running = s.state { s.state = .done }
+            default: break
             }
         case "Stop", "SubagentStop":
             if e.hookEventName == "Stop" {
@@ -108,6 +114,11 @@ public final class SessionStore: ObservableObject {
         }
         sessions[e.sessionId] = s
         refreshTranscript(e.sessionId)
+    }
+
+    /// The terminal dialog was answered (hooks give no signal for that), so drop the flag by hand.
+    public func dismiss(_ sessionId: String) {
+        if case .needsInput = sessions[sessionId]?.state { sessions[sessionId]?.state = .done }
     }
 
     public func resolve(_ approval: PendingApproval, _ decision: Decision, message: String? = nil) {

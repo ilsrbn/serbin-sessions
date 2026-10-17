@@ -18,7 +18,7 @@ extension SessionState {
         case .idle: "Idle"
         case .running(let tool): tool.map { "Running \($0)" } ?? "Working…"
         case .needsApproval: "Waiting for approval"
-        case .needsInput: "Waiting for you"
+        case .needsInput(let m): "Asks: \(m)"
         case .done: "Done"
         case .failed(let m): "Failed: \(m)"
         }
@@ -61,10 +61,10 @@ struct NotchView: View {
             if urgent > 0 {
                 Text("\(urgent)").font(.caption.bold().monospacedDigit()).foregroundStyle(summaryColor)
             }
-            Spacer(minLength: ui.notchWidth)
+            Spacer(minLength: ui.notchWidth + 28) // real notch is a bit wider than the reported gap
             Text(summaryText).font(.caption).foregroundStyle(.white.opacity(0.8)).lineLimit(1)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 16)
         .frame(maxHeight: .infinity)
     }
 }
@@ -80,7 +80,7 @@ struct ExpandedView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Color.clear.frame(height: 30) // keep clear of the physical notch
+            Color.clear.frame(height: ui.notchHeight + 4) // keep clear of the physical notch
             if let hint = hookHint { hint }
             if !store.pending.isEmpty {
                 ScrollView {

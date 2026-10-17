@@ -15,6 +15,7 @@ final class NotchUIState: ObservableObject {
     @Published var focusTick = 0
     /// Physical notch width (0 on Macs without one) so the collapsed view can keep clear of it.
     var notchWidth: CGFloat = 0
+    var notchHeight: CGFloat = 32
 
     func recompute(hasPending: Bool) {
         let v = hovering || pinned || showingNew || typing || hasPending
@@ -41,6 +42,7 @@ final class NotchPanel: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         measureNotch()
         ui.notchWidth = notchWidth
+        ui.notchHeight = collapsedSize.height
         contentView = NSHostingView(rootView: NotchView(store: store, ui: ui))
     }
 
@@ -63,7 +65,7 @@ final class NotchPanel: NSPanel {
         let inset = s.safeAreaInsets.top
         if inset > 0, let l = s.auxiliaryTopLeftArea, let r = s.auxiliaryTopRightArea {
             notchWidth = s.frame.width - l.width - r.width
-            collapsedSize = NSSize(width: notchWidth + 120, height: inset)
+            collapsedSize = NSSize(width: notchWidth + 150, height: inset)
         } else {
             notchWidth = 0
             collapsedSize = NSSize(width: 240, height: 30)
