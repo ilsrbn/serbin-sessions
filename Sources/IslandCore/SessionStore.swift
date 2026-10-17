@@ -30,6 +30,8 @@ public struct Session: Identifiable {
     public var updatedAt = Date()
     /// Set while a panel-started `claude -p` process is attached.
     public var hostId: String?
+    /// Terminal session closed (SessionEnd) or only known from history. Safe to resume.
+    public var ended = false
 
     public var isManaged: Bool { hostId != nil }
     public var title: String { (cwd as NSString).lastPathComponent }
@@ -66,6 +68,7 @@ public final class SessionStore: ObservableObject {
         if let cwd = e.cwd { s.cwd = cwd }
         if let t = e.transcriptPath { s.transcriptPath = t }
         s.updatedAt = Date()
+        if e.hookEventName != "SessionEnd" { s.ended = false }
 
         switch e.hookEventName {
         case "SessionStart":
@@ -104,15 +107,16 @@ public final class SessionStore: ObservableObject {
                 if let m = e.lastAssistantMessage { s.lastMessage = m }
             }
         case "SessionEnd":
-            sessions[e.sessionId] = nil
-            transcripts[e.sessionId] = nil
+            // Keep it in the list (as history) so it can be reopened/resumed later.
+            s.ended = true
+            s.state = .done
             for p in pending where p.sessionId == e.sessionId { p.channel.send(Reply(id: p.id, decision: .ask)) }
             pending.removeAll { $0.sessionId == e.sessionId }
-            return
         default:
             break
         }
         sessions[e.sessionId] = s
+        prune()
         refreshTranscript(e.sessionId)
     }
 
@@ -160,17 +164,31 @@ public final class SessionStore: ObservableObject {
         for (id, s) in sessions { if case .running = s.state { refreshTranscript(id) } }
     }
 
-    /// Restart recovery: show sessions that were active recently.
-    public func recover(maxAge: TimeInterval = 1800) {
-        for r in RecentSessions.scan(limit: 8) where Date().timeIntervalSince(r.modified) < maxAge {
+    /// Restart recovery: load recent sessions from ~/.claude/projects as history (no age cutoff).
+    public func recover(limit: Int = 20) {
+        for r in RecentSessions.scan(limit: limit) {
             guard sessions[r.id] == nil else { continue }
             var s = Session(id: r.id, cwd: r.cwd)
             s.state = .done
+            s.ended = true
             s.lastPrompt = r.firstPrompt
             s.transcriptPath = r.path
             s.updatedAt = r.modified
             sessions[r.id] = s
             refreshTranscript(r.id)
+        }
+        prune()
+    }
+
+    /// Keep the sidebar bounded: drop the oldest idle history entries beyond `maxSessions`.
+    private func prune(maxSessions: Int = 30) {
+        guard sessions.count > maxSessions else { return }
+        let droppable = sessions.values
+            .filter { $0.hostId == nil && ($0.state == .done || $0.state == .idle) }
+            .sorted { $0.updatedAt < $1.updatedAt }
+        for s in droppable.prefix(sessions.count - maxSessions) {
+            sessions[s.id] = nil
+            transcripts[s.id] = nil
         }
     }
 

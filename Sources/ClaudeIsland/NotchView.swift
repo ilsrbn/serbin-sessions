@@ -138,7 +138,7 @@ struct ExpandedView: View {
                             Circle().fill(s.state.color).frame(width: 8, height: 8).padding(.top, 5)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(s.title).font(.callout.bold()).lineLimit(1)
-                                Text(s.state.label).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                Text(s.subtitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                             }
                             Spacer(minLength: 0)
                             if s.isManaged { Image(systemName: "bolt.fill").font(.caption2).foregroundStyle(.secondary) }
@@ -205,5 +205,15 @@ struct ApprovalCard: View {
         }
         .padding(10)
         .islandGlass(RoundedRectangle(cornerRadius: 16), tint: .orange.opacity(0.28))
+    }
+}
+
+extension Session {
+    /// Live sessions show their state; finished/historical ones show what they were about and when.
+    var subtitle: String {
+        guard state == .done || state == .idle else { return state.label }
+        let ago = RelativeDateTimeFormatter().localizedString(for: updatedAt, relativeTo: Date())
+        let what = (lastPrompt ?? "").replacingOccurrences(of: "\n", with: " ")
+        return what.isEmpty ? ago : "\(ago) · \(what)"
     }
 }
