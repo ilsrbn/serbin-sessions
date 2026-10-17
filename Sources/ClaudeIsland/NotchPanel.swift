@@ -57,11 +57,16 @@ final class NotchPanel: NSPanel {
         }
     }
 
-    func reposition(expanded: Bool) {
-        guard let screen = targetScreen else { return }
+    /// Screen rect the panel occupies in the given state (top-center of the notch screen).
+    func rect(expanded: Bool) -> NSRect? {
+        guard let screen = targetScreen else { return nil }
         let size = expanded ? Self.expandedSize : collapsedSize
         let f = screen.frame
-        let origin = NSPoint(x: f.midX - size.width / 2, y: f.maxY - size.height)
-        setFrame(NSRect(origin: origin, size: size), display: true, animate: true)
+        return NSRect(x: f.midX - size.width / 2, y: f.maxY - size.height, width: size.width, height: size.height)
+    }
+
+    func reposition(expanded: Bool) {
+        guard let r = rect(expanded: expanded), r != frame else { return }
+        setFrame(r, display: true, animate: false) // animating moves the window under the cursor => hover flicker
     }
 }

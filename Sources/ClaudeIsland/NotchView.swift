@@ -35,7 +35,6 @@ struct NotchView: View {
                 .fill(.black)
             if ui.expanded { ExpandedView(store: store, ui: ui) } else { collapsed }
         }
-        .onHover { ui.hovering = $0 }
         .preferredColorScheme(.dark)
     }
 
