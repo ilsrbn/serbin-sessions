@@ -63,17 +63,28 @@ struct NotchView: View {
 
     /// Left ear: status dot + count of sessions that need you. Right ear: what the top session is doing.
     private var collapsed: some View {
-        HStack(spacing: 6) {
-            Circle().fill(summaryColor).frame(width: 9, height: 9)
-                .opacity(store.sessions.isEmpty ? 0.4 : 1)
-            let urgent = store.sessions.values.filter { $0.state.urgency >= 4 }.count
-            if urgent > 0 {
-                Text("\(urgent)").font(.caption.bold().monospacedDigit()).foregroundStyle(summaryColor)
+        // Three fixed zones centered on the screen: [left ear][notch gap][right ear]. The gap is the
+        // reported notch width plus its rounded shoulders, so nothing can slide under the hardware.
+        HStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Circle().fill(summaryColor).frame(width: 9, height: 9)
+                    .opacity(store.sessions.isEmpty ? 0.4 : 1)
+                let urgent = store.sessions.values.filter { $0.state.urgency >= 4 }.count
+                if urgent > 0 {
+                    Text("\(urgent)").font(.caption.bold().monospacedDigit()).foregroundStyle(summaryColor)
+                }
             }
-            Spacer(minLength: ui.notchWidth + 28) // real notch is a bit wider than the reported gap
-            Text(summaryText).font(.caption).foregroundStyle(.primary.opacity(0.85)).lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 14)
+
+            Color.clear.frame(width: NotchPanel.notchGap(ui.notchWidth))
+
+            Text(summaryText)
+                .font(.caption).foregroundStyle(.primary.opacity(0.85))
+                .lineLimit(1).truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.trailing, 14)
         }
-        .padding(.horizontal, 16)
         .frame(maxHeight: .infinity)
     }
 }

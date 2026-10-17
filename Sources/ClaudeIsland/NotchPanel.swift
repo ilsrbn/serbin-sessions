@@ -139,12 +139,19 @@ final class NotchPanel: NSPanel {
         let inset = s.safeAreaInsets.top
         if inset > 0, let l = s.auxiliaryTopLeftArea, let r = s.auxiliaryTopRightArea {
             notchWidth = s.frame.width - l.width - r.width
-            collapsedSize = NSSize(width: notchWidth + 150, height: inset)
+            collapsedSize = NSSize(width: Self.notchGap(notchWidth) + 2 * Self.earWidth, height: inset)
         } else {
             notchWidth = 0
             collapsedSize = NSSize(width: 240, height: 30)
         }
     }
+
+    /// Horizontal room for the status text on each side of the notch in the collapsed pill.
+    static let earWidth: CGFloat = 112
+
+    /// Dead zone in the middle of the collapsed pill: the reported notch width plus its rounded
+    /// shoulders (the hardware cutout is visibly wider than `auxiliaryTop*Area` suggests).
+    static func notchGap(_ notchWidth: CGFloat) -> CGFloat { notchWidth + 24 }
 
     /// Screen rect the panel occupies in the given state (top-center of the notch screen).
     func rect(expanded: Bool) -> NSRect? {
