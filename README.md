@@ -17,6 +17,13 @@ Then click "Install hooks" in the panel, or run `notch-hook install` (backup: `s
 
 Dev: `swift build && .build/debug/ClaudeIsland`.
 
+## Control from Raycast / any hotkey tool
+Commands: `toggle`, `open` (focus the message box), `new` (open the New session form), `close`.
+- URL: `open -g claude-island://toggle` (also launches the app if it is not running).
+- CLI: `build/ClaudeIsland.app/Contents/MacOS/notch-hook toggle`.
+- Raycast: add `scripts/raycast` as a Script Commands directory (Settings > Extensions > Script Commands > Add directory), then assign a hotkey to each command. Or create a Quicklink with URL `claude-island://toggle` and give it a hotkey.
+- Built-in global hotkey: ⌃⌥Space (toggle).
+
 ## Layout
 - `Sources/IslandCore` – protocol, unix socket, session store, transcript reader, managed host, hook installer
 - `Sources/notch-hook` – CLI called by Claude Code hooks (+ install/uninstall/status)

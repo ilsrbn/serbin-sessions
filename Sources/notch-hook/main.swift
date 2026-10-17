@@ -6,6 +6,7 @@ import IslandCore
 //   notch-hook install         add hooks to ~/.claude/settings.json (backup first)
 //   notch-hook uninstall       remove hooks added by install
 //   notch-hook status          print whether hooks are installed
+//   notch-hook toggle|open|close|new   control the panel (bind to a hotkey in Raycast etc.)
 
 func runHook() {
     let input = FileHandle.standardInput.readDataToEndOfFile()
@@ -28,6 +29,14 @@ case "install":
 case "uninstall":
     do { try HooksInstaller.uninstall(); print("Removed claude-island hooks") }
     catch { fputs("uninstall failed: \(error)\n", stderr); exit(1) }
+case let cmd? where IslandCommand(rawValue: cmd) != nil:
+    // App not running => launch it via its URL scheme (which also carries the command).
+    if !HookClient.deliver(IslandCommand(rawValue: cmd)!.envelope) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        p.arguments = ["-g", "\(IslandCommand.urlScheme)://\(cmd)"]
+        try? p.run(); p.waitUntilExit()
+    }
 case "status":
     print(HooksInstaller.isInstalled() ? "installed" : "not installed")
 default:

@@ -144,6 +144,23 @@ public final class SocketServer: @unchecked Sendable {
 }
 
 public enum HookClient {
+    /// Fire-and-forget. Returns false when the app isn't listening.
+    public static func deliver(_ env: Envelope) -> Bool {
+        guard var addr = makeAddr(IslandPaths.socket) else { return false }
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        let rc = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        guard rc == 0, var out = try? JSONEncoder().encode(env) else { return false }
+        out.append(0x0A)
+        writeAll(fd, out)
+        return true
+    }
+
     /// Sends the envelope. If it expects a reply, blocks until one arrives or `wait` elapses.
     /// Returns nil when the app is not running or no answer came (caller falls through to `ask`).
     public static func send(_ env: Envelope, wait: TimeInterval) -> Reply? {

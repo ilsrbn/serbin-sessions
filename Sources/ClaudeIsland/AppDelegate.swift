@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKey: HotKey?
     private var insideSince: Date?
     private var outsideSince: Date?
+    /// After an explicit close the cursor may still rest on the notch; hover stays off until it leaves.
+    private var hoverNeedsExit = false
 
     @MainActor
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -42,13 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Global hotkey: ⌃⌥Space opens the panel with the composer focused (again: closes it).
         hotKey = HotKey(keyCode: UInt32(kVK_Space), modifiers: UInt32(controlKey | optionKey)) { [weak self] in
-            MainActor.assumeIsolated {
-                guard let self, let panel = self.panel else { return }
-                if self.ui.typing {
-                    self.ui.typing = false; self.ui.hovering = false
-                    panel.resignKey()
-                } else { panel.summon(self.ui) }
-            }
+            MainActor.assumeIsolated { self?.perform(.toggle) }
         }
 
         // Sound when a new approval shows up.
@@ -70,12 +66,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         do {
-            try server.start { env, channel in
-                Task { @MainActor in store.handle(env, channel: channel) }
+            try server.start { [weak self] env, channel in
+                Task { @MainActor in
+                    if let cmd = IslandCommand(eventName: env.event.hookEventName) { self?.perform(cmd) }
+                    else { store.handle(env, channel: channel) }
+                }
             }
         } catch {
             NSLog("claude-island: socket start failed: \(error)")
             NSApp.terminate(nil)
+        }
+    }
+
+    /// Panel control shared by the global hotkey, `notch-hook <cmd>` and claude-island:// URLs.
+    @MainActor
+    func perform(_ cmd: IslandCommand) {
+        guard let panel else { return }
+        switch cmd {
+        case .toggle: perform(ui.expanded ? .close : .open)
+        case .open: panel.summon(ui)
+        case .new:
+            ui.showingNew = true
+            panel.summon(ui)
+        case .close:
+            ui.typing = false; ui.pinned = false; ui.showingNew = false; ui.hovering = false
+            hoverNeedsExit = true
+            panel.resignKey()
+        }
+    }
+
+    @MainActor
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for u in urls where u.scheme == IslandCommand.urlScheme {
+            if let cmd = IslandCommand(rawValue: u.host ?? u.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))) {
+                perform(cmd)
+            }
         }
     }
 
@@ -95,6 +120,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Open after a short dwell on the collapsed notch area.
             let trigger = panel.rect(expanded: false)?.insetBy(dx: -6, dy: -4).offsetBy(dx: 0, dy: -2)
             let inside = trigger.map { $0.contains(m) || m.y >= $0.maxY - 1 && abs(m.x - $0.midX) < $0.width / 2 } ?? false
+            if hoverNeedsExit {
+                if !inside { hoverNeedsExit = false }
+                return
+            }
             if inside {
                 let since = insideSince ?? now
                 insideSince = since

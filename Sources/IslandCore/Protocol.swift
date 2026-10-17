@@ -98,3 +98,21 @@ public enum HookOutput {
         return String(data: data, encoding: .utf8)
     }
 }
+
+/// Remote control of the panel (CLI, URL scheme, Raycast). Travels over the hook socket as an
+/// event named "island.<command>".
+public enum IslandCommand: String, CaseIterable, Sendable {
+    case toggle, open, close, new
+
+    public static let eventPrefix = "island."
+    public static let urlScheme = "claude-island"
+
+    public var envelope: Envelope {
+        Envelope(expectsReply: false, event: HookEvent(sessionId: "-", hookEventName: Self.eventPrefix + rawValue))
+    }
+
+    public init?(eventName: String) {
+        guard eventName.hasPrefix(Self.eventPrefix) else { return nil }
+        self.init(rawValue: String(eventName.dropFirst(Self.eventPrefix.count)))
+    }
+}

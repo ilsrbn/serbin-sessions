@@ -18,6 +18,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
+  <key>CFBundleURLTypes</key><array><dict>
+    <key>CFBundleURLName</key><string>dev.ilsrbn.claude-island</string>
+    <key>CFBundleURLSchemes</key><array><string>claude-island</string></array>
+  </dict></array>
 </dict></plist>
 PLIST
 codesign --force --deep --sign - "$APP"
