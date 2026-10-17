@@ -55,7 +55,7 @@ public final class ManagedHost: @unchecked Sendable {
     public func start(cwd: String, prompt: String, mode: PermissionMode = .default,
                       resume: String? = nil, model: ModelChoice? = nil, effort: Effort? = nil) throws -> String {
         guard let claude = Self.findClaude() else {
-            throw NSError(domain: "ClaudeIsland", code: 1,
+            throw NSError(domain: "SerbinSessions", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "claude CLI not found"])
         }
         let hostId = UUID().uuidString

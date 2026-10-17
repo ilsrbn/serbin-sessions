@@ -3,7 +3,7 @@
 # @raycast.schemaVersion 1
 # @raycast.title New Claude Session
 # @raycast.mode silent
-# @raycast.packageName Claude Island
+# @raycast.packageName Serbin Sessions
 # @raycast.icon 🏝
 
-open -g claude-island://new
+open -g serbin-sessions://new

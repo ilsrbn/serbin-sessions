@@ -9,7 +9,7 @@ enum LaunchAtLogin {
         do {
             if isEnabled { try SMAppService.mainApp.unregister() } else { try SMAppService.mainApp.register() }
             if SMAppService.mainApp.status == .requiresApproval {
-                fail("Allow Claude Island in System Settings > General > Login Items")
+                fail("Allow Serbin Sessions in System Settings > General > Login Items")
             }
         } catch {
             fail("Launch at login: \(error.localizedDescription)")

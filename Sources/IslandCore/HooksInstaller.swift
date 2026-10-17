@@ -60,7 +60,7 @@ public enum HooksInstaller {
         let fm = FileManager.default
         try fm.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
         if fm.fileExists(atPath: path) {
-            let backup = path + ".bak-claude-island"
+            let backup = path + ".bak-serbin-sessions"
             try? fm.removeItem(atPath: backup)
             try fm.copyItem(atPath: path, toPath: backup)
         }

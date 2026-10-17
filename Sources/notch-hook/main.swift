@@ -24,10 +24,10 @@ case "install":
     let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath().path
     do {
         try HooksInstaller.install(hookBinary: exe)
-        print("Installed hooks -> \(HooksInstaller.settingsPath) (backup: .bak-claude-island)")
+        print("Installed hooks -> \(HooksInstaller.settingsPath) (backup: .bak-serbin-sessions)")
     } catch { fputs("install failed: \(error)\n", stderr); exit(1) }
 case "uninstall":
-    do { try HooksInstaller.uninstall(); print("Removed claude-island hooks") }
+    do { try HooksInstaller.uninstall(); print("Removed Serbin Sessions hooks") }
     catch { fputs("uninstall failed: \(error)\n", stderr); exit(1) }
 case let cmd? where IslandCommand(rawValue: cmd) != nil:
     // App not running => launch it via its URL scheme (which also carries the command).

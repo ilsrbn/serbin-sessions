@@ -118,7 +118,7 @@ final class NotchPanel: NSPanel {
     /// Key window WITHOUT activating the app (nonactivating panel): whatever app is in front,
     /// e.g. a fullscreen video, stays the active app and keeps its own window state.
     private func takeFocus() {
-        // A claude-island:// URL makes LaunchServices activate us. Give activation straight back so
+        // A serbin-sessions:// URL makes LaunchServices activate us. Give activation straight back so
         // the user's app (and its fullscreen Space) stays active; we only keep key-window status.
         if frontIsUs, let app = previousApp, !app.isTerminated {
             NSApp.yieldActivation(to: app)
@@ -132,7 +132,7 @@ final class NotchPanel: NSPanel {
         NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier
     }
 
-    /// Last app that was active before us. Tracked continuously because a `claude-island://` URL
+    /// Last app that was active before us. Tracked continuously because a `serbin-sessions://` URL
     /// opened from Raycast makes LaunchServices activate us *before* our handler runs.
     private var previousApp: NSRunningApplication?
     private var activationObserver: NSObjectProtocol?

@@ -125,7 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         } catch {
-            NSLog("claude-island: socket start failed: \(error)")
+            NSLog("serbin-sessions: socket start failed: \(error)")
             NSApp.terminate(nil)
         }
     }
@@ -140,7 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.frontmostApplication?.bundleIdentifier.map(terminalBundles.contains) ?? false
     }
 
-    /// Panel control shared by the global hotkey, `notch-hook <cmd>` and claude-island:// URLs.
+    /// Panel control shared by the global hotkey, `notch-hook <cmd>` and serbin-sessions:// URLs.
     @MainActor
     func perform(_ cmd: IslandCommand) {
         guard let panel else { return }
@@ -159,7 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @MainActor
     func application(_ application: NSApplication, open urls: [URL]) {
-        for u in urls where u.scheme == IslandCommand.urlScheme {
+        for u in urls where [IslandCommand.urlScheme, IslandCommand.legacyUrlScheme].contains(u.scheme ?? "") {
             if let cmd = IslandCommand(rawValue: u.host ?? u.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))) {
                 perform(cmd)
             }

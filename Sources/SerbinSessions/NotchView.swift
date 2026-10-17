@@ -352,7 +352,7 @@ struct ApprovalCard: View {
                     Spacer()
                     Button("Dismiss") { store.resolve(approval, .ask) }
                 } else {
-                    Button("Deny") { store.resolve(approval, .deny, message: "Denied from Claude Island") }
+                    Button("Deny") { store.resolve(approval, .deny, message: "Denied from Serbin Sessions") }
                         .keyboardShortcut("n", modifiers: .command).islandButton()
                     Button("Allow") { store.resolve(approval, .allow) }
                         .keyboardShortcut("y", modifiers: .command).islandButton(prominent: true)

@@ -2,7 +2,7 @@ import Foundation
 
 public enum IslandPaths {
     public static var directory: String {
-        NSHomeDirectory() + "/.claude-island"
+        NSHomeDirectory() + "/.serbin-sessions"
     }
     public static var socket: String { directory + "/sock" }
 }
@@ -117,7 +117,9 @@ public enum IslandCommand: String, CaseIterable, Sendable {
     case toggle, open, close, new
 
     public static let eventPrefix = "island."
-    public static let urlScheme = "claude-island"
+    public static let urlScheme = "serbin-sessions"
+    /// Pre-rename scheme, still accepted so old Quicklinks keep working.
+    public static let legacyUrlScheme = "claude-island"
 
     public var envelope: Envelope {
         Envelope(expectsReply: false, event: HookEvent(sessionId: "-", hookEventName: Self.eventPrefix + rawValue))
