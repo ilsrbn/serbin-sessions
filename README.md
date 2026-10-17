@@ -1,6 +1,8 @@
+<p align="center"><img src="assets/brand/icon-light.svg" width="128" alt="Serbin Sessions"></p>
+
 # Serbin Sessions
 
-Notch panel for Claude Code sessions. Collapsed: flat black pill, current tool; an amber line + count while something needs you; "Done" for a few seconds when a run finishes. Never opens by itself.
+**Serbin Sessions** – notch panel for Claude Code sessions. Collapsed: flat black pill, current tool; an amber line + count while something needs you; "Done" for a few seconds when a run finishes. Never opens by itself.
 Expanded (hover / pin / hotkey): session list, transcript, approve/deny, message input.
 
 ## Features
