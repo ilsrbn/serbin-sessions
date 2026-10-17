@@ -5,13 +5,23 @@ import IslandCore
 @MainActor
 final class NotchUIState: ObservableObject {
     @Published var hovering = false
+    @Published var pinned = false
+    @Published var showingNew = false
+    @Published var selectedId: String?
     @Published var expanded = false
+    /// Physical notch width (0 on Macs without one) so the collapsed view can keep clear of it.
+    var notchWidth: CGFloat = 0
+
+    func recompute(hasPending: Bool) {
+        expanded = hovering || pinned || showingNew || hasPending
+    }
 }
 
 /// Borderless, non-activating panel pinned to the top-center of the screen (over the notch).
 final class NotchPanel: NSPanel {
-    private static let collapsedSize = NSSize(width: 260, height: 34)
-    private static let expandedSize = NSSize(width: 520, height: 320)
+    static let expandedSize = NSSize(width: 700, height: 460)
+    private(set) var collapsedSize = NSSize(width: 300, height: 34)
+    private(set) var notchWidth: CGFloat = 0
 
     @MainActor
     init(store: SessionStore, ui: NotchUIState) {
@@ -24,14 +34,32 @@ final class NotchPanel: NSPanel {
         isOpaque = false
         hasShadow = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        measureNotch()
+        ui.notchWidth = notchWidth
         contentView = NSHostingView(rootView: NotchView(store: store, ui: ui))
     }
 
     override var canBecomeKey: Bool { true }
 
+    private var targetScreen: NSScreen? {
+        NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main
+    }
+
+    private func measureNotch() {
+        guard let s = targetScreen else { return }
+        let inset = s.safeAreaInsets.top
+        if inset > 0, let l = s.auxiliaryTopLeftArea, let r = s.auxiliaryTopRightArea {
+            notchWidth = s.frame.width - l.width - r.width
+            collapsedSize = NSSize(width: notchWidth + 120, height: inset)
+        } else {
+            notchWidth = 0
+            collapsedSize = NSSize(width: 240, height: 30)
+        }
+    }
+
     func reposition(expanded: Bool) {
-        guard let screen = NSScreen.main else { return }
-        let size = expanded ? Self.expandedSize : Self.collapsedSize
+        guard let screen = targetScreen else { return }
+        let size = expanded ? Self.expandedSize : collapsedSize
         let f = screen.frame
         let origin = NSPoint(x: f.midX - size.width / 2, y: f.maxY - size.height)
         setFrame(NSRect(origin: origin, size: size), display: true, animate: true)

@@ -41,14 +41,62 @@ private func readLine(_ fd: Int32, timeout: TimeInterval?) -> Data? {
     }
 }
 
+/// Write side of one hook connection. Detects the hook process going away (e.g. you answered
+/// in the terminal and Claude Code killed the hook) and fires `onCancel`.
+public final class ReplyChannel: @unchecked Sendable {
+    private let fd: Int32
+    private let lock = NSLock()
+    private var finished = false
+    private var cancelHandler: (@Sendable () -> Void)?
+
+    init(fd: Int32) { self.fd = fd }
+
+    public func send(_ reply: Reply) {
+        lock.lock()
+        guard !finished else { lock.unlock(); return }
+        finished = true
+        lock.unlock()
+        guard fd >= 0, var out = try? JSONEncoder().encode(reply) else { return }
+        out.append(0x0A)
+        writeAll(fd, out)
+    }
+
+    public func onCancel(_ handler: @escaping @Sendable () -> Void) {
+        lock.lock(); cancelHandler = handler; lock.unlock()
+    }
+
+    /// Owns the fd: closes it once the reply is sent or the peer is gone.
+    fileprivate func monitor() {
+        Thread.detachNewThread { [self] in
+            while true {
+                lock.lock(); let done = finished; lock.unlock()
+                if done { break }
+                var p = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+                guard poll(&p, 1, 200) > 0 else { continue }
+                var b: UInt8 = 0
+                let n = recv(fd, &b, 1, MSG_PEEK | MSG_DONTWAIT)
+                if n == 0 || (n < 0 && errno != EAGAIN && errno != EINTR) {
+                    lock.lock()
+                    let already = finished
+                    finished = true
+                    let h = cancelHandler
+                    lock.unlock()
+                    if !already { h?() }
+                    break
+                }
+                usleep(100_000)
+            }
+            close(fd)
+        }
+    }
+}
+
 /// Listens on a unix socket. Each connection carries one Envelope line; if
-/// `expectsReply`, the handler's responder writes one Reply line back.
+/// `expectsReply`, the handler answers through the ReplyChannel.
 public final class SocketServer: @unchecked Sendable {
-    public typealias Responder = @Sendable (Reply) -> Void
-    public typealias Handler = @Sendable (Envelope, @escaping Responder) -> Void
+    public typealias Handler = @Sendable (Envelope, ReplyChannel) -> Void
 
     private let path: String
-    private var listenFD: Int32 = -1
 
     public init(path: String = IslandPaths.socket) { self.path = path }
 
@@ -71,7 +119,6 @@ public final class SocketServer: @unchecked Sendable {
             throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
         }
         chmod(path, 0o600)
-        listenFD = fd
         Thread.detachNewThread { [fd] in
             while true {
                 let client = accept(fd, nil, nil)
@@ -86,15 +133,11 @@ public final class SocketServer: @unchecked Sendable {
               let env = try? JSONDecoder().decode(Envelope.self, from: line)
         else { close(client); return }
         if env.expectsReply {
-            handler(env) { reply in
-                if var out = try? JSONEncoder().encode(reply) {
-                    out.append(0x0A)
-                    writeAll(client, out)
-                }
-                close(client)
-            }
+            let ch = ReplyChannel(fd: client)
+            ch.monitor()
+            handler(env, ch)
         } else {
-            handler(env) { _ in }
+            handler(env, ReplyChannel(fd: -1))
             close(client)
         }
     }

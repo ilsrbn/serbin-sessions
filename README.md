@@ -1,26 +1,34 @@
 # Claude Island
 
-Notch panel for Claude Code sessions: progress in the collapsed notch, approvals and details when expanded.
+Notch panel for Claude Code sessions. Collapsed: status dot, count of sessions that need you, current tool.
+Expanded (hover / pin / any pending approval): session list, transcript, approve/deny, message input.
 
-## Status
-MVP stage 1 (observed sessions via hooks): socket server, `notch-hook`, session store, collapsed/expanded notch UI, approve/deny.
+## Features
+- Observes any Claude Code session through hooks (terminal sessions keep working as usual).
+- Approve / deny tool calls from the notch (⌘Y / ⌘N). If the app is down or you answer in the terminal, the card disappears and Claude Code's normal flow takes over.
+- Start sessions from the panel (`claude -p` with stream-json), send follow-ups, stop, resume past sessions.
+- Transcript view (text, tool calls, results) read from `~/.claude/projects/*.jsonl`.
+- Restores recently active sessions after a restart; sound on new approval.
 
 ## Build & run
-    swift build
-    .build/debug/ClaudeIsland &          # start the panel
-    .build/debug/notch-hook install      # add hooks to ~/.claude/settings.json (backup: settings.json.bak-claude-island)
-    .build/debug/notch-hook uninstall    # remove them
+    ./scripts/bundle.sh                       # build/ClaudeIsland.app (ad-hoc signed)
+    open build/ClaudeIsland.app
+Then click "Install hooks" in the panel, or run `notch-hook install` (backup: `settings.json.bak-claude-island`; `notch-hook uninstall` reverts).
 
-Hooks fail safe: if the app is not running or times out, Claude Code shows its normal terminal dialog.
+Dev: `swift build && .build/debug/ClaudeIsland`.
 
 ## Layout
-- `Sources/IslandCore` – protocol, unix socket, session store
-- `Sources/notch-hook` – CLI called by Claude Code hooks (+ install/uninstall)
+- `Sources/IslandCore` – protocol, unix socket, session store, transcript reader, managed host, hook installer
+- `Sources/notch-hook` – CLI called by Claude Code hooks (+ install/uninstall/status)
 - `Sources/ClaudeIsland` – AppKit/SwiftUI notch panel
 - Tests need full Xcode (XCTest); CommandLineTools alone cannot run them.
 
-## Roadmap
-2. Expanded view with transcript streaming. 3. Managed sessions via Agent SDK sidecar. 4. Resume, history, settings.
+## Notes
+- `PermissionRequest` output schema verified against the official hooks docs; hooks fire in `-p` mode too, so panel-started sessions get approvals the same way. In `-p` there is no terminal fallback, so "Ask in terminal" is hidden for those.
+- `AskUserQuestion` prompts cannot be answered through hooks; the card says to answer in the terminal.
+- Hook timeout for `PermissionRequest` is 3600 s; all other events 5 s. App down => hook exits silently.
+- `@State` is avoided on purpose (needs the SwiftUIMacros plugin from full Xcode).
+- Unsigned/ad-hoc build: Gatekeeper prompt on first launch (right-click > Open). Not notarized.
 
-## Unverified
-`PermissionRequest` stdout schema (`hookSpecificOutput.decision.behavior`) comes from third-party docs; check https://code.claude.com/docs/en/hooks.
+## Not done
+Streaming partial text (transcript refreshes every ~1.5 s while running), multi-monitor choice, launch at login, iPhone relay.

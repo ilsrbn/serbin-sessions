@@ -17,6 +17,8 @@ public struct HookEvent: Codable, Sendable {
     public var toolInput: JSONValue?
     public var message: String?
     public var prompt: String?
+    public var notificationType: String?
+    public var lastAssistantMessage: String?
 
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
@@ -27,11 +29,14 @@ public struct HookEvent: Codable, Sendable {
         case toolInput = "tool_input"
         case message
         case prompt
+        case notificationType = "notification_type"
+        case lastAssistantMessage = "last_assistant_message"
     }
 
     public init(sessionId: String, hookEventName: String, cwd: String? = nil,
                 transcriptPath: String? = nil, toolName: String? = nil,
-                toolInput: JSONValue? = nil, message: String? = nil, prompt: String? = nil) {
+                toolInput: JSONValue? = nil, message: String? = nil, prompt: String? = nil,
+                notificationType: String? = nil, lastAssistantMessage: String? = nil) {
         self.sessionId = sessionId
         self.hookEventName = hookEventName
         self.cwd = cwd
@@ -40,6 +45,8 @@ public struct HookEvent: Codable, Sendable {
         self.toolInput = toolInput
         self.message = message
         self.prompt = prompt
+        self.notificationType = notificationType
+        self.lastAssistantMessage = lastAssistantMessage
     }
 }
 
@@ -76,7 +83,7 @@ public struct Reply: Codable, Sendable {
 public enum HookOutput {
     /// JSON for stdout of a PermissionRequest hook, or nil to fall through to the
     /// normal terminal dialog (decision == .ask).
-    /// NOTE: schema taken from third-party docs; verify against code.claude.com/docs/en/hooks.
+    /// Schema verified against code.claude.com/docs/en/hooks (hookSpecificOutput.decision.behavior).
     public static func permission(_ reply: Reply) -> String? {
         guard reply.decision != .ask else { return nil }
         var decision: [String: Any] = ["behavior": reply.decision.rawValue]
