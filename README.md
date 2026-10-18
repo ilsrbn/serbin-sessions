@@ -1,45 +1,108 @@
-<p align="center"><img src="assets/brand/icon-light.svg" width="128" alt="Serbin Sessions"></p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/readme/hero-dark.svg">
+  <img src="assets/readme/hero-light.svg" alt="Serbin Sessions: approve, follow and steer Claude Code from the notch">
+</picture>
 
-# Serbin Sessions
+<p align="center">
+  <b>macOS 14+</b> · for <a href="https://code.claude.com">Claude Code</a> · v0.1.0
+</p>
 
-**Serbin Sessions** – notch panel for Claude Code sessions. Collapsed: flat black pill, current tool; an amber line + count while something needs you; "Done" for a few seconds when a run finishes. Never opens by itself.
-Expanded (hover / pin / hotkey): session list, transcript, approve/deny, message input.
+---
 
-## Features
-- Observes any Claude Code session through hooks (terminal sessions keep working as usual).
-- Approve / deny tool calls from the notch (⌘Y / ⌘N). If the app is down or you answer in the terminal, the card disappears and Claude Code's normal flow takes over.
-- Start sessions from the panel (`claude -p` with stream-json), send follow-ups, stop, resume past sessions.
-- Transcript view (text, tool calls, results) read from `~/.claude/projects/*.jsonl`.
-- Session info bar: model, effort, context fill (from the transcript). Model/effort menus apply to the next message (the `-p` process is restarted with `--resume --model --effort`); not available for a live terminal session. Effort is only known for sessions started here.
-- Footer: plan limits (5h / 7d) taken from `rate_limit_event` of panel-started sessions (last value persisted, dimmed when old), and a launch-at-login toggle (needs the .app bundle).
-- Restores recently active sessions after a restart; optional tick sound (off by default, speaker button in the footer) for requests that need you. Sound and the "Done" flash are skipped while a terminal/editor is frontmost.
+Sessions lives in the notch of your Mac. It stays a flat black pill while Claude Code works, shows a thin amber line when something needs you, and says *Done* when a run finishes. It never opens by itself. Hover, pin it or press a hotkey to see every session, read the transcript, approve a tool call or send the next message.
 
-## Build & run
-    ./scripts/bundle.sh                       # build/SerbinSessions.app (ad-hoc signed)
-    open build/SerbinSessions.app
-Then click "Install hooks" in the panel, or run `notch-hook install` (backup: `settings.json.bak-serbin-sessions`; `notch-hook uninstall` reverts).
+Your terminal sessions keep working as usual. If the app is closed, or you answer in the terminal, Claude Code's own flow takes over.
 
-Dev: `swift build && .build/debug/SerbinSessions`.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/readme/states-dark.svg">
+  <img src="assets/readme/states-light.svg" alt="Collapsed states: working, needs you, done">
+</picture>
 
-## Control from Raycast / any hotkey tool
-Commands: `toggle`, `open` (focus the message box), `new` (open the New session form), `close`.
-- URL: `open -g serbin-sessions://toggle` (also launches the app if it is not running). The old `claude-island://` scheme still works.
-- CLI: `build/SerbinSessions.app/Contents/MacOS/notch-hook toggle`.
-- Raycast: add `scripts/raycast` as a Script Commands directory (Settings > Extensions > Script Commands > Add directory), then assign a hotkey to each command. Or create a Quicklink with URL `serbin-sessions://toggle` and give it a hotkey.
-- Built-in global hotkey: ⌃⌥Space (toggle).
+## What it does
 
-## Layout
-- `Sources/IslandCore` – protocol, unix socket, session store, transcript reader, managed host, hook installer
-- `Sources/notch-hook` – CLI called by Claude Code hooks (+ install/uninstall/status)
-- `Sources/SerbinSessions` – AppKit/SwiftUI notch panel
-- Tests need full Xcode (XCTest); CommandLineTools alone cannot run them.
+| | |
+|---|---|
+| **Approve from the notch** | Allow or deny tool calls with ⌘Y / ⌘N, including "always allow" rules Claude Code would offer. |
+| **Every session in one place** | Observes any Claude Code session through hooks, terminal or panel. |
+| **Start and steer** | Start sessions from the panel, send follow-ups, stop, resume past ones. |
+| **Model and effort** | Switch per session; applies to the next message. |
+| **Transcript** | Text, tool calls and results, read from `~/.claude/projects/*.jsonl`. |
+| **Context and limits** | Context fill per session; 5h / 7d plan limits from panel-started sessions. |
+| **Quiet by default** | Optional tick sound; sound and *Done* are skipped while a terminal or editor is in front. |
+| **Hotkeys and Raycast** | ⌃⌥Space toggles. URL scheme and CLI for any launcher. |
 
-## Notes
-- `PermissionRequest` output schema verified against the official hooks docs; hooks fire in `-p` mode too, so panel-started sessions get approvals the same way. In `-p` there is no terminal fallback, so "Ask in terminal" is hidden for those.
-- `AskUserQuestion` prompts cannot be answered through hooks; the card says to answer in the terminal.
-- Hook timeout for `PermissionRequest` is 3600 s; all other events 5 s. App down => hook exits silently.
-- `@State` is avoided on purpose (needs the SwiftUIMacros plugin from full Xcode).
-- Unsigned/ad-hoc build: Gatekeeper prompt on first launch (right-click > Open). Not notarized.
+## Install
 
-## Not done
-Streaming partial text (transcript refreshes every ~1.5 s while running), multi-monitor choice, iPhone relay.
+Free and open source. Needs a Mac with a notch running macOS 14+, and the `claude` CLI.
+
+**Homebrew**
+
+```sh
+brew install --cask ilsrbn/tap/serbin-sessions
+```
+
+If Homebrew asks you to trust the tap, run `brew trust ilsrbn/tap` once.
+
+**Download**
+
+Get the `.dmg` from [Releases](https://github.com/ilsrbn/serbin-sessions/releases/latest) and drag the app to Applications. Sessions is not notarized by Apple, so on first launch macOS blocks it: open **System Settings → Privacy & Security** and click **Open Anyway**. The Homebrew install skips this step.
+
+**Then** click **Install hooks** in the panel, or run `notch-hook install`. Your `~/.claude/settings.json` is backed up to `settings.json.bak-serbin-sessions` first, and `notch-hook uninstall` reverts it (`brew uninstall` does this for you).
+
+**From source**
+
+```sh
+git clone https://github.com/ilsrbn/serbin-sessions && cd serbin-sessions
+./scripts/bundle.sh          # builds, installs to /Applications and launches
+```
+
+Requires Xcode Command Line Tools (Swift 5.9+).
+
+## Control it from anywhere
+
+| Command | Effect |
+|---|---|
+| `toggle` | Show or hide the panel |
+| `open` | Open and focus the message box |
+| `new` | Open the New session form |
+| `close` | Hide the panel |
+
+- **URL:** `open -g serbin-sessions://toggle` (launches the app if needed; the old `claude-island://` scheme still works).
+- **CLI:** `"/Applications/Serbin Sessions.app/Contents/MacOS/notch-hook" toggle`
+- **Raycast:** add `scripts/raycast` as a Script Commands directory and give each command a hotkey, or make a Quicklink to `serbin-sessions://toggle`.
+
+## How it works
+
+```
+Claude Code ──hook──▶ notch-hook ──unix socket──▶ Sessions.app
+     ▲                    │                           │
+     └── allow / deny ◀───┘◀──────── reply ───────────┘
+```
+
+Claude Code runs `notch-hook` on each hook event. It forwards the event over a unix socket in `~/.serbin-sessions/` and, for `PermissionRequest`, waits for your answer (up to an hour). If the app is down the hook exits silently and Claude Code falls back to its normal dialog. Sessions started from the panel run `claude -p` with stream-json and get approvals the same way.
+
+| Path | What's there |
+|---|---|
+| `Sources/IslandCore` | Protocol, socket, session store, transcript reader, managed host, hook installer |
+| `Sources/notch-hook` | CLI called by Claude Code hooks, plus `install` / `uninstall` / `status` |
+| `Sources/SerbinSessions` | AppKit and SwiftUI notch panel |
+
+## Develop
+
+```sh
+swift build && .build/debug/SerbinSessions
+```
+
+Tests need full Xcode (XCTest). `@State` is avoided on purpose, since it needs the SwiftUI macros plugin from full Xcode.
+
+## Known limits
+
+- `AskUserQuestion` prompts can't be answered through hooks; the card asks you to answer in the terminal.
+- Panel-started (`-p`) sessions have no terminal fallback, so "Ask in terminal" is hidden for them.
+- Not yet: streaming partial text (the transcript refreshes about every 1.5 s), choosing a monitor, iPhone relay.
+
+See [CHANGELOG.md](CHANGELOG.md) for releases and [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) for how they are made.
+
+---
+
+<p align="center"><sub>MIT License. Sessions is a Serbin product. Not affiliated with Anthropic. Claude Code is a product of Anthropic.</sub></p>
