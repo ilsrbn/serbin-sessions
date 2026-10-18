@@ -2,7 +2,7 @@
 # scripts/release.sh fills in version and sha256.
 cask "serbin-sessions" do
   version "0.1.0"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  sha256 "920fdbd1b000309afb739feea0eb45c2d47576a14ecc8ef7d62ba9f6d963e71f"
 
   url "https://github.com/ilsrbn/serbin-sessions/releases/download/v#{version}/SerbinSessions-#{version}.dmg"
   name "Serbin Sessions"
@@ -11,20 +11,24 @@ cask "serbin-sessions" do
 
   # Every Mac with a notch is Apple silicon.
   depends_on arch: :arm64
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "Serbin Sessions.app"
 
   # Not notarized: drop the download quarantine so Gatekeeper does not block the first launch.
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-dr", "com.apple.quarantine", "#{appdir}/Serbin Sessions.app"]
+  postflight_steps do
+    run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{appdir}}/Serbin Sessions.app"],
+                          writable_paths: ["Serbin Sessions.app"], writable_base: :appdir
   end
 
   # Take our hooks out of ~/.claude/settings.json before the app goes away.
-  uninstall_preflight do
-    system_command "#{appdir}/Serbin Sessions.app/Contents/MacOS/notch-hook",
-                   args: ["uninstall"], must_succeed: false
+  uninstall_preflight_steps do
+    run "Serbin Sessions.app/Contents/MacOS/notch-hook",
+        base:           :appdir,
+        args:           ["uninstall"],
+        must_succeed:   false,
+        writable_paths: [".claude"],
+        writable_base:  :home
   end
 
   uninstall quit: "dev.ilsrbn.serbin-sessions"
