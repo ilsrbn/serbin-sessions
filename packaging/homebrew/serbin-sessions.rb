@@ -2,7 +2,7 @@
 # scripts/release.sh fills in version and sha256.
 cask "serbin-sessions" do
   version "0.1.0"
-  sha256 "920fdbd1b000309afb739feea0eb45c2d47576a14ecc8ef7d62ba9f6d963e71f"
+  sha256 "d95376430faf7c5e42df0cd9ebd23c7ec8e309316b19276d9f91cba803d72cbd"
 
   url "https://github.com/ilsrbn/serbin-sessions/releases/download/v#{version}/SerbinSessions-#{version}.dmg"
   name "Serbin Sessions"
