@@ -38,5 +38,5 @@ if [ -n "${TAP_DIR:-}" ]; then
   cp "$CASK" "$TAP_DIR/Casks/"
   git -C "$TAP_DIR" add Casks/serbin-sessions.rb
   git -C "$TAP_DIR" commit -m "serbin-sessions $VERSION"
-  git -C "$TAP_DIR" push
+  git -C "$TAP_DIR" push -u origin HEAD
 fi
